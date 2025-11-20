@@ -1,0 +1,1197 @@
+import { Hono } from 'npm:hono';
+import { cors } from 'npm:hono/cors';
+import { logger } from 'npm:hono/logger';
+import { createClient } from 'jsr:@supabase/supabase-js@2';
+import * as bcrypt from 'https://deno.land/x/bcrypt@v0.4.1/mod.ts';
+
+const app = new Hono();
+
+app.use('*', logger(console.log));
+app.use('*', cors({
+  origin: '*',
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// Supabase Client with Service Role Key
+const supabaseAdmin = createClient(
+  Deno.env.get('SUPABASE_URL')!,
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+);
+
+// ============================================
+// 🔐 Authentication Routes
+// ============================================
+
+// Sign Up Route
+app.post('/make-server-a52c947c/signup', async (c) => {
+  try {
+    const { email, password, fullName, role } = await c.req.json();
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password);
+
+    // Insert user into database
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .insert([{
+        email,
+        password: hashedPassword,
+        name: fullName,
+        role: role || 'Observer'
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.log(`Error creating user in database: ${error.message}`);
+      return c.json({ error: error.message }, 400);
+    }
+
+    // Create auth user
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      user_metadata: {
+        full_name: fullName,
+        role: role || 'Observer',
+        user_db_id: data.id
+      },
+      email_confirm: true
+    });
+
+    if (authError) {
+      // Rollback database insert
+      await supabaseAdmin.from('users').delete().eq('id', data.id);
+      console.log(`Error creating auth user: ${authError.message}`);
+      return c.json({ error: authError.message }, 400);
+    }
+
+    return c.json({ 
+      user: {
+        id: data.id,
+        email: data.email,
+        fullName: data.name,
+        role: data.role
+      }, 
+      message: 'تم إنشاء الحساب بنجاح' 
+    });
+  } catch (error) {
+    console.log(`Server error during signup: ${error}`);
+    return c.json({ error: 'خطأ في إنشاء الحساب' }, 500);
+  }
+});
+
+// Get User Profile
+app.get('/make-server-a52c947c/profile', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    
+    if (!accessToken) {
+      return c.json({ error: 'No access token' }, 401);
+    }
+
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    // Get user from database
+    const { data: userData, error: dbError } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .eq('email', user.email)
+      .single();
+
+    if (dbError || !userData) {
+      return c.json({ 
+        user: {
+          id: user.id,
+          email: user.email,
+          fullName: user.user_metadata?.full_name || user.email,
+          role: user.user_metadata?.role || 'Observer'
+        }
+      });
+    }
+
+    return c.json({
+      user: {
+        id: userData.id,
+        email: userData.email,
+        fullName: userData.name,
+        role: userData.role
+      }
+    });
+  } catch (error) {
+    console.log(`Error fetching user profile: ${error}`);
+    return c.json({ error: 'خطأ في جلب البيانات' }, 500);
+  }
+});
+
+// ============================================
+// 👥 User Management Routes
+// ============================================
+
+// Get All Users (General Manager only - NO edit/delete for Branch Manager)
+app.get('/make-server-a52c947c/users', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    // Get current user role from database
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('role')
+      .eq('email', user.email)
+      .single();
+
+    const role = currentUser?.role || user.user_metadata?.role;
+    
+    // Only General Manager can access users list
+    if (role !== 'General Manager' && role !== 'المدير العام') {
+      return c.json({ error: 'Forbidden: Only General Manager can access this' }, 403);
+    }
+
+    const { data: users, error: usersError } = await supabaseAdmin
+      .from('users')
+      .select('id, email, name, role, created_at')
+      .order('created_at', { ascending: false });
+
+    if (usersError) {
+      return c.json({ error: usersError.message }, 500);
+    }
+
+    const usersFormatted = users.map(u => ({
+      id: u.id,
+      email: u.email,
+      fullName: u.name,
+      role: u.role,
+      createdAt: u.created_at
+    }));
+
+    return c.json({ users: usersFormatted });
+  } catch (error) {
+    console.log(`Error fetching users: ${error}`);
+    return c.json({ error: 'خطأ في جلب المستخدمين' }, 500);
+  }
+});
+
+// Delete User (General Manager only)
+app.delete('/make-server-a52c947c/users/:userId', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    // Get current user role
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('role, id')
+      .eq('email', user.email)
+      .single();
+
+    const role = currentUser?.role;
+    
+    if (role !== 'General Manager' && role !== 'المدير العام') {
+      return c.json({ error: 'Forbidden: Only General Manager can delete users' }, 403);
+    }
+
+    const userIdToDelete = c.req.param('userId');
+
+    // Prevent user from deleting themselves
+    if (currentUser.id === userIdToDelete) {
+      return c.json({ error: 'Cannot delete yourself' }, 400);
+    }
+
+    // Get user email for auth deletion
+    const { data: userToDelete } = await supabaseAdmin
+      .from('users')
+      .select('email')
+      .eq('id', userIdToDelete)
+      .single();
+
+    // Delete from database (CASCADE will handle related records)
+    const { error: deleteError } = await supabaseAdmin
+      .from('users')
+      .delete()
+      .eq('id', userIdToDelete);
+
+    if (deleteError) {
+      return c.json({ error: deleteError.message }, 400);
+    }
+
+    // Delete from Supabase Auth
+    if (userToDelete?.email) {
+      const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
+      const authUser = authUsers.users.find(u => u.email === userToDelete.email);
+      if (authUser) {
+        await supabaseAdmin.auth.admin.deleteUser(authUser.id);
+      }
+    }
+
+    return c.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.log(`Error deleting user: ${error}`);
+    return c.json({ error: 'خطأ في حذف المستخدم' }, 500);
+  }
+});
+
+// ============================================
+// 🚧 Projects Routes
+// ============================================
+
+// Create Project
+app.post('/make-server-a52c947c/projects', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    // Get current user from database
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('id, role')
+      .eq('email', user.email)
+      .single();
+
+    if (!currentUser) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+
+    const projectData = await c.req.json();
+
+    const { data: project, error: projectError } = await supabaseAdmin
+      .from('projects')
+      .insert([{
+        project_number: projectData.projectNumber,
+        project_name: projectData.roadName || projectData.workOrderDescription,
+        location: projectData.region || 'غير محدد',
+        contractor_name: projectData.contractorName || 'غير محدد',
+        consultant_name: projectData.consultantName || 'غير محدد',
+        start_date: projectData.siteHandoverDate || new Date().toISOString().split('T')[0],
+        end_date: projectData.contractEndDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        contract_value: projectData.projectValue || 0,
+        status: projectData.status || 'قيد التنفيذ',
+        created_by: currentUser.id
+      }])
+      .select()
+      .single();
+
+    if (projectError) {
+      return c.json({ error: projectError.message }, 400);
+    }
+
+    // Create notification
+    await supabaseAdmin
+      .from('notifications')
+      .insert([{
+        title: 'مشروع جديد',
+        message: `تم إنشاء مشروع جديد: ${project.project_name}`,
+        type: 'success',
+        user_id: null // null means for all users
+      }]);
+
+    return c.json({ project, message: 'تم إنشاء المشروع بنجاح' });
+  } catch (error) {
+    console.log(`Error creating project: ${error}`);
+    return c.json({ error: 'خطأ في إنشاء المشروع' }, 500);
+  }
+});
+
+// Get All Projects
+app.get('/make-server-a52c947c/projects', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { data: projects, error: projectsError } = await supabaseAdmin
+      .from('projects')
+      .select(`
+        *,
+        creator:created_by (
+          id,
+          name,
+          email
+        )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (projectsError) {
+      return c.json({ error: projectsError.message }, 500);
+    }
+
+    const projectsFormatted = projects.map(p => ({
+      id: p.id,
+      projectNumber: p.project_number,
+      roadName: p.project_name,
+      workOrderDescription: p.project_name,
+      region: p.location,
+      contractorName: p.contractor_name,
+      consultantName: p.consultant_name,
+      siteHandoverDate: p.start_date,
+      contractEndDate: p.end_date,
+      projectValue: p.contract_value,
+      status: p.status,
+      createdBy: p.created_by,
+      createdByName: p.creator?.name || 'غير معروف',
+      createdByEmail: p.creator?.email || '',
+      createdAt: p.created_at
+    }));
+
+    return c.json({ projects: projectsFormatted });
+  } catch (error) {
+    console.log(`Error fetching projects: ${error}`);
+    return c.json({ error: 'خطأ في جلب المشاريع' }, 500);
+  }
+});
+
+// Update Project (General Manager only)
+app.put('/make-server-a52c947c/projects/:id', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    // Get current user role
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('role')
+      .eq('email', user.email)
+      .single();
+
+    const role = currentUser?.role;
+    
+    if (role !== 'General Manager' && role !== 'المدير العام') {
+      return c.json({ error: 'غير مصرح لك بتعديل المشاريع - المدير العام فقط' }, 403);
+    }
+
+    const projectId = c.req.param('id');
+    const updates = await c.req.json();
+
+    const { data: project, error: updateError } = await supabaseAdmin
+      .from('projects')
+      .update({
+        project_name: updates.roadName || updates.workOrderDescription,
+        location: updates.region,
+        contractor_name: updates.contractorName,
+        consultant_name: updates.consultantName,
+        start_date: updates.siteHandoverDate,
+        end_date: updates.contractEndDate,
+        contract_value: updates.projectValue,
+        status: updates.status,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', projectId)
+      .select()
+      .single();
+
+    if (updateError) {
+      return c.json({ error: updateError.message }, 400);
+    }
+
+    return c.json({ project, message: 'تم تحديث المشروع بنجاح' });
+  } catch (error) {
+    console.log(`Error updating project: ${error}`);
+    return c.json({ error: 'خطأ في تحديث المشروع' }, 500);
+  }
+});
+
+// Delete Project (General Manager only)
+app.delete('/make-server-a52c947c/projects/:id', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    // Get current user role
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('role')
+      .eq('email', user.email)
+      .single();
+
+    const role = currentUser?.role;
+    
+    if (role !== 'General Manager' && role !== 'المدير العام') {
+      return c.json({ error: 'غير مصرح لك بحذف المشاريع - المدير العام فقط' }, 403);
+    }
+
+    const projectId = c.req.param('id');
+
+    const { error: deleteError } = await supabaseAdmin
+      .from('projects')
+      .delete()
+      .eq('id', projectId);
+
+    if (deleteError) {
+      return c.json({ error: deleteError.message }, 400);
+    }
+
+    return c.json({ message: 'تم حذف المشروع بنجاح' });
+  } catch (error) {
+    console.log(`Error deleting project: ${error}`);
+    return c.json({ error: 'خطأ في حذف المشروع' }, 500);
+  }
+});
+
+// ============================================
+// 📊 Daily Reports Routes
+// ============================================
+
+// Create Daily Report
+app.post('/make-server-a52c947c/daily-reports', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('email', user.email)
+      .single();
+
+    if (!currentUser) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+
+    const reportData = await c.req.json();
+
+    const { data: report, error: reportError } = await supabaseAdmin
+      .from('daily_reports')
+      .insert([{
+        project_id: reportData.projectId,
+        report_date: reportData.reportDate,
+        weather: reportData.weatherCondition || 'مشمس',
+        work_description: reportData.workDescription,
+        workers_count: reportData.workersCount || 0,
+        equipment_used: reportData.equipment || '',
+        notes: reportData.notes || '',
+        created_by: currentUser.id
+      }])
+      .select()
+      .single();
+
+    if (reportError) {
+      return c.json({ error: reportError.message }, 400);
+    }
+
+    // Create notification
+    await supabaseAdmin
+      .from('notifications')
+      .insert([{
+        title: 'تقرير يومي جديد',
+        message: `تم إضافة تقرير يومي جديد: ${reportData.workDescription.substring(0, 50)}...`,
+        type: reportData.issues ? 'warning' : 'info',
+        user_id: null
+      }]);
+
+    return c.json({ report, message: 'تم إنشاء التقرير اليومي بنجاح' });
+  } catch (error) {
+    console.log(`Error creating daily report: ${error}`);
+    return c.json({ error: 'خطأ في إنشاء التقرير اليومي' }, 500);
+  }
+});
+
+// Get All Daily Reports
+app.get('/make-server-a52c947c/daily-reports', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { data: reports, error: reportsError } = await supabaseAdmin
+      .from('daily_reports')
+      .select(`
+        *,
+        project:project_id (
+          id,
+          project_name
+        ),
+        creator:created_by (
+          id,
+          name
+        )
+      `)
+      .order('report_date', { ascending: false });
+
+    if (reportsError) {
+      return c.json({ error: reportsError.message }, 500);
+    }
+
+    const reportsFormatted = reports.map(r => ({
+      id: r.id,
+      projectId: r.project_id,
+      projectName: r.project?.project_name || 'غير معروف',
+      reportDate: r.report_date,
+      weatherCondition: r.weather,
+      workDescription: r.work_description,
+      workersCount: r.workers_count,
+      equipment: r.equipment_used,
+      notes: r.notes,
+      createdBy: r.created_by,
+      createdByName: r.creator?.name || 'غير معروف',
+      createdAt: r.created_at
+    }));
+
+    return c.json({ reports: reportsFormatted });
+  } catch (error) {
+    console.log(`Error fetching daily reports: ${error}`);
+    return c.json({ error: 'خطأ في جلب التقارير اليومية' }, 500);
+  }
+});
+
+// Update Daily Report (General Manager only)
+app.put('/make-server-a52c947c/daily-reports/:id', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('role')
+      .eq('email', user.email)
+      .single();
+
+    const role = currentUser?.role;
+    
+    if (role !== 'General Manager' && role !== 'المدير العام') {
+      return c.json({ error: 'غير مصرح لك بتعديل التقارير - المدير العام فقط' }, 403);
+    }
+
+    const reportId = c.req.param('id');
+    const updates = await c.req.json();
+
+    const { data: report, error: updateError } = await supabaseAdmin
+      .from('daily_reports')
+      .update({
+        report_date: updates.reportDate,
+        weather: updates.weatherCondition,
+        work_description: updates.workDescription,
+        workers_count: updates.workersCount,
+        equipment_used: updates.equipment,
+        notes: updates.notes,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', reportId)
+      .select()
+      .single();
+
+    if (updateError) {
+      return c.json({ error: updateError.message }, 400);
+    }
+
+    return c.json({ report, message: 'تم تحديث التقرير بنجاح' });
+  } catch (error) {
+    console.log(`Error updating daily report: ${error}`);
+    return c.json({ error: 'خطأ في تحديث التقرير' }, 500);
+  }
+});
+
+// Delete Daily Report (General Manager only)
+app.delete('/make-server-a52c947c/daily-reports/:id', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('role')
+      .eq('email', user.email)
+      .single();
+
+    const role = currentUser?.role;
+    
+    if (role !== 'General Manager' && role !== 'المدير العام') {
+      return c.json({ error: 'غير مصرح لك بحذف التقارير - المدير العام فقط' }, 403);
+    }
+
+    const reportId = c.req.param('id');
+
+    const { error: deleteError } = await supabaseAdmin
+      .from('daily_reports')
+      .delete()
+      .eq('id', reportId);
+
+    if (deleteError) {
+      return c.json({ error: deleteError.message }, 400);
+    }
+
+    return c.json({ message: 'تم حذف التقرير بنجاح' });
+  } catch (error) {
+    console.log(`Error deleting daily report: ${error}`);
+    return c.json({ error: 'خطأ في حذف التقرير' }, 500);
+  }
+});
+
+// ============================================
+// 📈 Performance Contracts Routes
+// ============================================
+
+// Get Performance Contracts
+app.get('/make-server-a52c947c/performance-contracts', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { data: contracts, error: contractsError } = await supabaseAdmin
+      .from('performance_contracts')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (contractsError) {
+      return c.json({ error: contractsError.message }, 500);
+    }
+
+    return c.json({ contracts });
+  } catch (error) {
+    console.log(`Error fetching performance contracts: ${error}`);
+    return c.json({ error: 'خطأ في جلب عقود الأداء' }, 500);
+  }
+});
+
+// Create Performance Contract (General Manager only)
+app.post('/make-server-a52c947c/performance-contracts', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('id, role')
+      .eq('email', user.email)
+      .single();
+
+    const role = currentUser?.role;
+    
+    if (role !== 'General Manager' && role !== 'المدير العام') {
+      return c.json({ error: 'Only General Manager can create contracts' }, 403);
+    }
+
+    const contractData = await c.req.json();
+
+    const { data: contract, error: contractError } = await supabaseAdmin
+      .from('performance_contracts')
+      .insert([{
+        contract_number: contractData.contractNumber,
+        project_name: contractData.projectName,
+        contractor_name: contractData.contractorName,
+        year: contractData.year,
+        month: contractData.month,
+        contractor_score: parseFloat(contractData.contractorScore),
+        yearly_weighted: parseFloat(contractData.yearlyWeighted),
+        difference: contractData.difference,
+        created_by: currentUser.id
+      }])
+      .select()
+      .single();
+
+    if (contractError) {
+      return c.json({ error: contractError.message }, 400);
+    }
+
+    // Create notifications for Branch Manager and Admin Manager
+    const { data: targetUsers } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .in('role', ['مدير عام الفرع', 'Branch General Manager', 'المدير الإداري', 'Admin Manager']);
+
+    if (targetUsers && targetUsers.length > 0) {
+      const notifications = targetUsers.map(u => ({
+        user_id: u.id,
+        title: 'عقد أداء جديد',
+        message: `تم إضافة عقد أداء جديد: ${contractData.contractNumber}`,
+        type: 'info'
+      }));
+
+      await supabaseAdmin
+        .from('notifications')
+        .insert(notifications);
+    }
+
+    return c.json({ contract, message: 'تم إضافة عقد الأداء بنجاح' });
+  } catch (error) {
+    console.log(`Error creating performance contract: ${error}`);
+    return c.json({ error: 'خطأ في إنشاء عقد الأداء' }, 500);
+  }
+});
+
+// Update Performance Contract (General Manager only)
+app.put('/make-server-a52c947c/performance-contracts', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('role')
+      .eq('email', user.email)
+      .single();
+
+    const role = currentUser?.role;
+    
+    if (role !== 'General Manager' && role !== 'المدير العام') {
+      return c.json({ error: 'Only General Manager can update contracts' }, 403);
+    }
+
+    const { id, ...contractData } = await c.req.json();
+
+    const { data: contract, error: updateError } = await supabaseAdmin
+      .from('performance_contracts')
+      .update({
+        contract_number: contractData.contractNumber,
+        project_name: contractData.projectName,
+        contractor_name: contractData.contractorName,
+        year: contractData.year,
+        month: contractData.month,
+        contractor_score: parseFloat(contractData.contractorScore),
+        yearly_weighted: parseFloat(contractData.yearlyWeighted),
+        difference: contractData.difference,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) {
+      return c.json({ error: updateError.message }, 400);
+    }
+
+    // Create notifications
+    const { data: targetUsers } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .in('role', ['مدير عام الفرع', 'Branch General Manager', 'المدير الإداري', 'Admin Manager']);
+
+    if (targetUsers && targetUsers.length > 0) {
+      const notifications = targetUsers.map(u => ({
+        user_id: u.id,
+        title: 'تحديث عقد أداء',
+        message: `تم تحديث عقد الأداء: ${contractData.contractNumber}`,
+        type: 'info'
+      }));
+
+      await supabaseAdmin
+        .from('notifications')
+        .insert(notifications);
+    }
+
+    return c.json({ contract, message: 'تم تحديث عقد الأداء بنجاح' });
+  } catch (error) {
+    console.log(`Error updating performance contract: ${error}`);
+    return c.json({ error: 'خطأ في تحديث عقد الأداء' }, 500);
+  }
+});
+
+// Delete Performance Contract (General Manager only)
+app.delete('/make-server-a52c947c/performance-contracts', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('role')
+      .eq('email', user.email)
+      .single();
+
+    const role = currentUser?.role;
+    
+    if (role !== 'General Manager' && role !== 'المدير العام') {
+      return c.json({ error: 'Only General Manager can delete contracts' }, 403);
+    }
+
+    const { id } = await c.req.json();
+
+    const { error: deleteError } = await supabaseAdmin
+      .from('performance_contracts')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      return c.json({ error: deleteError.message }, 400);
+    }
+
+    return c.json({ message: 'تم حذف عقد الأداء بنجاح' });
+  } catch (error) {
+    console.log(`Error deleting performance contract: ${error}`);
+    return c.json({ error: 'خطأ في حذف عقد الأداء' }, 500);
+  }
+});
+
+// ============================================
+// 🔔 Notifications Routes
+// ============================================
+
+// Get Notifications
+app.get('/make-server-a52c947c/notifications', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('email', user.email)
+      .single();
+
+    if (!currentUser) {
+      return c.json({ notifications: [] });
+    }
+
+    // Get notifications for this user or for all users (user_id is null)
+    const { data: notifications, error: notificationsError } = await supabaseAdmin
+      .from('notifications')
+      .select('*')
+      .or(`user_id.eq.${currentUser.id},user_id.is.null`)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (notificationsError) {
+      return c.json({ error: notificationsError.message }, 500);
+    }
+
+    const notificationsFormatted = notifications.map(n => ({
+      id: n.id,
+      title: n.title,
+      message: n.message,
+      type: n.type,
+      read: n.is_read,
+      timestamp: n.created_at,
+      userId: n.user_id || 'all'
+    }));
+
+    return c.json({ notifications: notificationsFormatted });
+  } catch (error) {
+    console.log(`Error fetching notifications: ${error}`);
+    return c.json({ error: 'خطأ في جلب الإشعارات' }, 500);
+  }
+});
+
+// Mark Notification as Read
+app.put('/make-server-a52c947c/notifications/:id/read', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const notificationId = c.req.param('id');
+
+    await supabaseAdmin
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', notificationId);
+
+    return c.json({ message: 'تم تحديد الإشعار كمقروء' });
+  } catch (error) {
+    console.log(`Error marking notification as read: ${error}`);
+    return c.json({ error: 'خطأ في تحديث الإشعار' }, 500);
+  }
+});
+
+// Mark All Notifications as Read
+app.put('/make-server-a52c947c/notifications/read-all', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('email', user.email)
+      .single();
+
+    await supabaseAdmin
+      .from('notifications')
+      .update({ is_read: true })
+      .or(`user_id.eq.${currentUser.id},user_id.is.null`);
+
+    return c.json({ message: 'تم تحديد جميع الإشعارات كمقروءة' });
+  } catch (error) {
+    console.log(`Error marking all notifications as read: ${error}`);
+    return c.json({ error: 'خطأ في تحديث الإشعارات' }, 500);
+  }
+});
+
+// Delete Notification
+app.delete('/make-server-a52c947c/notifications/:id', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const notificationId = c.req.param('id');
+
+    await supabaseAdmin
+      .from('notifications')
+      .delete()
+      .eq('id', notificationId);
+
+    return c.json({ message: 'تم حذف الإشعار بنجاح' });
+  } catch (error) {
+    console.log(`Error deleting notification: ${error}`);
+    return c.json({ error: 'خطأ في حذف الإشعار' }, 500);
+  }
+});
+
+// ============================================
+// 🤖 AI Assistant Routes - REAL & ROLE-BASED
+// ============================================
+
+// AI Assistant - Analyze Data based on User Role
+app.post('/make-server-a52c947c/ai/analyze', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    // Get current user role
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('role, name')
+      .eq('email', user.email)
+      .single();
+
+    const { query } = await c.req.json();
+    const role = currentUser?.role || 'Observer';
+    const lowerQuery = query.toLowerCase();
+
+    let response = '';
+
+    // Get data based on user role
+    const { data: projects } = await supabaseAdmin.from('projects').select('*');
+    const { data: dailyReports } = await supabaseAdmin.from('daily_reports').select('*');
+    const { data: performanceContracts } = await supabaseAdmin.from('performance_contracts').select('*');
+
+    // Role-based responses
+    if (role === 'المدير العام' || role === 'General Manager') {
+      // Full access to all data
+      if (lowerQuery.includes('إحصائ') || lowerQuery.includes('تقرير شامل')) {
+        response = `📊 تقرير شامل للنظام:\\n\\n`;
+        response += `• إجمالي المشاريع: ${projects?.length || 0}\\n`;
+        response += `• المشاريع قيد التنفيذ: ${projects?.filter(p => p.status === 'قيد التنفيذ').length || 0}\\n`;
+        response += `• المشاريع المكتملة: ${projects?.filter(p => p.status === 'مكتمل').length || 0}\\n`;
+        response += `• التقارير اليومية: ${dailyReports?.length || 0}\\n`;
+        response += `• عقود الأداء: ${performanceContracts?.length || 0}\\n`;
+        
+        const totalValue = projects?.reduce((sum, p) => sum + (p.contract_value || 0), 0) || 0;
+        response += `• إجمالي قيمة المشاريع: ${totalValue.toLocaleString('ar-SA')} ريال`;
+      } else if (lowerQuery.includes('متأخر') || lowerQuery.includes('تأخر')) {
+        const delayed = projects?.filter(p => p.status === 'متوقف') || [];
+        response = `⚠️ المشاريع المتأخرة (${delayed.length}):\\n\\n`;
+        delayed.forEach(p => {
+          response += `• ${p.project_name} - ${p.location}\\n`;
+        });
+      } else {
+        response = `مرحباً ${currentUser.name}! أنا المساعد الذكي.\\n\\nكمدير عام، يمكنك السؤال عن:\\n• الإحصائيات الشاملة\\n• المشاريع المتأخرة\\n• قيمة المشاريع\\n• عقود الأداء\\n• التقارير اليومية`;
+      }
+    } else if (role === 'مدير عام الفرع' || role === 'Branch General Manager' || 
+               role === 'المدير الإداري' || role === 'Admin Manager') {
+      // View-only access
+      if (lowerQuery.includes('مشاريع') || lowerQuery.includes('عدد')) {
+        response = `📋 إحصائيات المشاريع:\\n\\n`;
+        response += `• إجمالي: ${projects?.length || 0}\\n`;
+        response += `• قيد التنفيذ: ${projects?.filter(p => p.status === 'قيد التنفيذ').length || 0}\\n`;
+        response += `• مكتمل: ${projects?.filter(p => p.status === 'مكتمل').length || 0}`;
+      } else if (lowerQuery.includes('تقرير') || lowerQuery.includes('يومي')) {
+        response = `📊 التقارير اليومية:\\n\\n`;
+        response += `• إجمالي التقارير: ${dailyReports?.length || 0}\\n`;
+        response += `• آخر تقرير: ${dailyReports?.[0]?.report_date || 'لا يوجد'}`;
+      } else {
+        response = `مرحباً ${currentUser.name}!\\n\\nكـ${role}، يمكنك الاطلاع على:\\n• إحصائيات المشاريع\\n• التقارير اليومية\\n• عقود الأداء (عرض فقط)`;
+      }
+    } else if (role === 'المهندس المشرف' || role === 'Supervising Engineer' ||
+               role === 'المهندس' || role === 'Engineer') {
+      // Create projects and reports, view all
+      if (lowerQuery.includes('مشاريع')) {
+        response = `👷 المشاريع الحالية:\\n\\n`;
+        const activeProjects = projects?.filter(p => p.status === 'قيد التنفيذ') || [];
+        response += `• قيد التنفيذ: ${activeProjects.length}\\n\\n`;
+        activeProjects.slice(0, 5).forEach(p => {
+          response += `• ${p.project_name}\\n`;
+        });
+      } else if (lowerQuery.includes('تقرير')) {
+        response = `📝 يمكنك:\\n• إنشاء تقارير يومية جديدة\\n• عرض جميع التقارير\\n• تتبع تقدم المشاريع`;
+      } else {
+        response = `مرحباً ${currentUser.name}!\\n\\nكمهندس، يمكنك:\\n• إنشاء مشاريع جديدة\\n• إضافة تقارير يومية\\n• عرض جميع المشاريع`;
+      }
+    } else {
+      // Observer - view only
+      response = `مرحباً ${currentUser.name}!\\n\\nكمراقب، يمكنك عرض:\\n• جميع المشاريع\\n• التقارير اليومية\\n• إحصائيات عامة`;
+    }
+
+    return c.json({ response });
+  } catch (error) {
+    console.log(`Error in AI analysis: ${error}`);
+    return c.json({ error: 'خطأ في تحليل البيانات' }, 500);
+  }
+});
+
+// AI Assistant - Create Project from Description (Engineers only)
+app.post('/make-server-a52c947c/ai/create-project', async (c) => {
+  try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { data: currentUser } = await supabaseAdmin
+      .from('users')
+      .select('id, role')
+      .eq('email', user.email)
+      .single();
+
+    const role = currentUser?.role;
+
+    // Check permissions
+    const canCreate = [
+      'المدير العام', 'General Manager',
+      'المهندس المشرف', 'Supervising Engineer',
+      'المهندس', 'Engineer'
+    ].includes(role);
+
+    if (!canCreate) {
+      return c.json({ error: 'ليس لديك صلاحية لإنشاء المشاريع' }, 403);
+    }
+
+    const { description, type } = await c.req.json();
+    
+    // Extract info from description (AI simulation)
+    const regions = ['الرياض', 'جدة', 'مكة', 'المدينة', 'الدمام', 'القصيم', 'تبوك', 'حائل'];
+    const region = regions.find(r => description.includes(r)) || 'الرياض';
+    
+    const roadName = description.includes('طريق') 
+      ? description.substring(description.indexOf('طريق'), description.indexOf('طريق') + 50).trim()
+      : 'طريق جديد';
+
+    const { data: project, error: projectError } = await supabaseAdmin
+      .from('projects')
+      .insert([{
+        project_number: Date.now().toString().slice(-6),
+        project_name: roadName,
+        location: region,
+        contractor_name: 'سيتم التحديد',
+        consultant_name: 'سيتم التحديث',
+        start_date: new Date().toISOString().split('T')[0],
+        end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        contract_value: 5000000,
+        status: 'قيد التنفيذ',
+        created_by: currentUser.id
+      }])
+      .select()
+      .single();
+
+    if (projectError) {
+      return c.json({ error: projectError.message }, 400);
+    }
+
+    return c.json({ 
+      project,
+      message: 'تم إنشاء المشروع بنجاح بواسطة المساعد الذكي' 
+    });
+  } catch (error) {
+    console.log(`Error in AI create project: ${error}`);
+    return c.json({ error: 'خطأ في إنشاء المشروع' }, 500);
+  }
+});
+
+// Initialize storage buckets
+const initializeStorage = async () => {
+  try {
+    const buckets = ['make-a52c947c-daily-reports', 'make-a52c947c-projects'];
+    
+    for (const bucketName of buckets) {
+      const { data: existing } = await supabaseAdmin.storage.listBuckets();
+      const bucketExists = existing?.some(bucket => bucket.name === bucketName);
+      
+      if (!bucketExists) {
+        await supabaseAdmin.storage.createBucket(bucketName, {
+          public: false,
+          fileSizeLimit: 10485760 // 10MB
+        });
+        console.log(`✅ Created bucket: ${bucketName}`);
+      }
+    }
+    console.log('✅ Storage initialized successfully');
+  } catch (error) {
+    console.log(`❌ Error initializing storage: ${error}`);
+  }
+};
+
+initializeStorage();
+
+console.log('🚀 Server started successfully with SQL database!');
+console.log('📊 Using PostgreSQL database via Supabase');
+console.log('🤖 AI Assistant is active and role-based');
+
+Deno.serve(app.fetch);
