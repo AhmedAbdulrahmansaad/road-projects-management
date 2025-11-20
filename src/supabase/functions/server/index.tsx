@@ -2,6 +2,7 @@ import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { generateWordHTML, generateExcelCSV, generatePDFHTML } from "./export-helper.tsx";
 
 // ============================================
 // 🔐 Password Hashing Utilities (Deno-compatible)
@@ -10,13 +11,21 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashBuffer = await crypto.subtle.digest(
+    "SHA-256",
+    data,
+  );
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const hashHex = hashArray
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
   return hashHex;
 }
 
-async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
+async function verifyPassword(
+  password: string,
+  hashedPassword: string,
+): Promise<boolean> {
   const hash = await hashPassword(password);
   return hash === hashedPassword;
 }
@@ -47,9 +56,12 @@ const supabaseAdmin = createClient(
 app.post("/make-server-a52c947c/signup", async (c) => {
   try {
     console.log("🟢 [SIGNUP] Starting signup process...");
-    
-    const { email, password, fullName, role } = await c.req.json();
-    console.log(`🟢 [SIGNUP] Received data: email=${email}, fullName=${fullName}, role=${role}`);
+
+    const { email, password, fullName, role } =
+      await c.req.json();
+    console.log(
+      `🟢 [SIGNUP] Received data: email=${email}, fullName=${fullName}, role=${role}`,
+    );
 
     // Hash password
     console.log("🟢 [SIGNUP] Hashing password...");
@@ -72,11 +84,15 @@ app.post("/make-server-a52c947c/signup", async (c) => {
       .single();
 
     if (error) {
-      console.error(`❌ [SIGNUP] Database insert error: ${JSON.stringify(error)}`);
+      console.error(
+        `❌ [SIGNUP] Database insert error: ${JSON.stringify(error)}`,
+      );
       return c.json({ error: error.message }, 400);
     }
 
-    console.log(`✅ [SIGNUP] User created in database with ID: ${data.id}`);
+    console.log(
+      `✅ [SIGNUP] User created in database with ID: ${data.id}`,
+    );
 
     // Create auth user
     console.log("🟢 [SIGNUP] Creating auth user...");
@@ -93,9 +109,13 @@ app.post("/make-server-a52c947c/signup", async (c) => {
       });
 
     if (authError) {
-      console.error(`❌ [SIGNUP] Auth creation error: ${JSON.stringify(authError)}`);
+      console.error(
+        `❌ [SIGNUP] Auth creation error: ${JSON.stringify(authError)}`,
+      );
       // Rollback database insert
-      console.log("🔄 [SIGNUP] Rolling back database insert...");
+      console.log(
+        "🔄 [SIGNUP] Rolling back database insert...",
+      );
       await supabaseAdmin
         .from("users")
         .delete()
@@ -116,9 +136,14 @@ app.post("/make-server-a52c947c/signup", async (c) => {
       message: "تم إنشاء الحساب بنجاح",
     });
   } catch (error) {
-    console.error(`❌ [SIGNUP] Unexpected server error: ${error.message}`);
+    console.error(
+      `❌ [SIGNUP] Unexpected server error: ${error.message}`,
+    );
     console.error(`❌ [SIGNUP] Error stack: ${error.stack}`);
-    return c.json({ error: `خطأ في إنشاء الحساب: ${error.message}` }, 500);
+    return c.json(
+      { error: `خطأ في إنشاء الحساب: ${error.message}` },
+      500,
+    );
   }
 });
 
@@ -356,10 +381,11 @@ app.post("/make-server-a52c947c/projects", async (c) => {
             work_order_number: projectData.workOrderNumber,
             contract_number: projectData.contractNumber,
             year: projectData.year || new Date().getFullYear(),
-            project_type: projectData.projectType || 'تنفيذ',
+            project_type: projectData.projectType || "تنفيذ",
             road_number: projectData.roadNumber,
             road_name: projectData.roadName,
-            work_order_description: projectData.workOrderDescription,
+            work_order_description:
+              projectData.workOrderDescription,
             project_number: projectData.projectNumber,
             project_value: projectData.projectValue || 0,
             duration: projectData.duration || 0,
@@ -382,7 +408,10 @@ app.post("/make-server-a52c947c/projects", async (c) => {
         .single();
 
     if (projectError) {
-      console.error('❌ [CREATE PROJECT] Database error:', projectError);
+      console.error(
+        "❌ [CREATE PROJECT] Database error:",
+        projectError,
+      );
       return c.json({ error: projectError.message }, 400);
     }
 
@@ -463,8 +492,10 @@ app.get("/make-server-a52c947c/projects", async (c) => {
       deviation: p.deviation,
       notes: p.notes,
       createdBy: p.created_by,
-      createdByName: p.created_by_name || p.creator?.name || "غير معروف",
-      createdByEmail: p.created_by_email || p.creator?.email || "",
+      createdByName:
+        p.created_by_name || p.creator?.name || "غير معروف",
+      createdByEmail:
+        p.created_by_email || p.creator?.email || "",
       createdAt: p.created_at,
       updatedAt: p.updated_at,
     }));
@@ -513,8 +544,11 @@ app.put("/make-server-a52c947c/projects/:id", async (c) => {
     const projectId = c.req.param("id");
     const updates = await c.req.json();
 
-    console.log('🟢 [UPDATE PROJECT] Updating project:', projectId);
-    console.log('🟢 [UPDATE PROJECT] Updates:', updates);
+    console.log(
+      "🟢 [UPDATE PROJECT] Updating project:",
+      projectId,
+    );
+    console.log("🟢 [UPDATE PROJECT] Updates:", updates);
 
     const { data: project, error: updateError } =
       await supabaseAdmin
@@ -547,11 +581,11 @@ app.put("/make-server-a52c947c/projects/:id", async (c) => {
         .single();
 
     if (updateError) {
-      console.error('❌ [UPDATE PROJECT] Error:', updateError);
+      console.error("❌ [UPDATE PROJECT] Error:", updateError);
       return c.json({ error: updateError.message }, 400);
     }
 
-    console.log('✅ [UPDATE PROJECT] Successfully updated');
+    console.log("✅ [UPDATE PROJECT] Successfully updated");
 
     // Create notification
     await supabaseAdmin.from("notifications").insert([
@@ -655,6 +689,14 @@ app.post("/make-server-a52c947c/daily-reports", async (c) => {
 
     const reportData = await c.req.json();
 
+    // Validate projectId
+    if (!reportData.projectId) {
+      console.log(
+        "❌ [DAILY REPORT ERROR]: project_id is required",
+      );
+      return c.json({ error: "المشروع مطلوب" }, 400);
+    }
+
     const { data: report, error: reportError } =
       await supabaseAdmin
         .from("daily_reports")
@@ -664,7 +706,8 @@ app.post("/make-server-a52c947c/daily-reports", async (c) => {
             report_date: reportData.reportDate,
             weather: reportData.weatherCondition || "مشمس",
             work_description: reportData.workDescription,
-            workers_count: reportData.workersCount || 0,
+            workers_count:
+              parseInt(reportData.workersCount) || 0,
             equipment_used: reportData.equipment || "",
             notes: reportData.notes || "",
             created_by: currentUser.id,
@@ -674,6 +717,7 @@ app.post("/make-server-a52c947c/daily-reports", async (c) => {
         .single();
 
     if (reportError) {
+      console.log("❌ [DAILY REPORT ERROR]:", reportError);
       return c.json({ error: reportError.message }, 400);
     }
 
@@ -723,7 +767,8 @@ app.get("/make-server-a52c947c/daily-reports", async (c) => {
         *,
         project:project_id (
           id,
-          project_name
+          work_order_description,
+          project_number
         ),
         creator:created_by (
           id,
@@ -739,8 +784,9 @@ app.get("/make-server-a52c947c/daily-reports", async (c) => {
 
     const reportsFormatted = reports.map((r) => ({
       id: r.id,
-      projectId: r.project_id,
-      projectName: r.project?.project_name || "غير معروف",
+      projectId: r.project_id || null,
+      projectName:
+        r.project?.work_order_description || "بدون مشروع",
       reportDate: r.report_date,
       weatherCondition: r.weather,
       workDescription: r.work_description,
@@ -922,7 +968,23 @@ app.get(
         return c.json({ error: contractsError.message }, 500);
       }
 
-      return c.json({ contracts });
+      // تحويل من snake_case إلى camelCase
+      const contractsFormatted =
+        contracts?.map((c) => ({
+          id: c.id,
+          contractNumber: c.contract_number || "",
+          projectName: c.project_name || "",
+          contractorName: c.contractor_name || "",
+          year: c.year || new Date().getFullYear(),
+          month: c.month || "",
+          contractorScore: c.contractor_score || 0,
+          yearlyWeighted: c.yearly_weighted || 0,
+          difference: c.difference || 0,
+          createdAt: c.created_at,
+          createdBy: c.created_by,
+        })) || [];
+
+      return c.json({ contracts: contractsFormatted });
     } catch (error) {
       console.log(
         `Error fetching performance contracts: ${error}`,
@@ -1478,7 +1540,7 @@ app.post("/make-server-a52c947c/ai/analyze", async (c) => {
           response += `• ${p.project_name}\\n`;
         });
       } else if (lowerQuery.includes("تقرير")) {
-        response = `📝 يمكنك:\\n• إنشاء تقارير يومية جديدة\\n• عرض جميع التقارير\\n• تتبع تقدم المشاريع`;
+        response = `📝 يمكنك:\\n• إنشاء تقارير يومية جديدة\\n• عرض جميع التقارير\\n• تتب تقدم المشاريع`;
       } else {
         response = `مرحباً ${currentUser.name}!\\n\\nكمهندس، يمكنك:\\n• إنشاء مشاريع جديدة\\n• إضافة تقارير يومية\\n• عرض جميع المشاريع`;
       }
@@ -1565,12 +1627,16 @@ app.post(
         : "طريق جديد";
 
       // استخراج معلومات إضافية من الوصف
-      const projectType = description.includes("صيانة") ? "صيانة" : "تنفيذ";
+      const projectType = description.includes("صيانة")
+        ? "صيانة"
+        : "تنفيذ";
       const workOrderNumber = `AI-${Date.now().toString().slice(-6)}`;
       const contractNumber = `CT-${Date.now().toString().slice(-8)}`;
       const projectNumber = `PRJ-${Date.now().toString().slice(-6)}`;
-      const roadNumber = Math.floor(Math.random() * 900 + 100).toString();
-      
+      const roadNumber = Math.floor(
+        Math.random() * 900 + 100,
+      ).toString();
+
       // Get user details for created_by fields
       const { data: userData } = await supabaseAdmin
         .from("users")
@@ -1578,8 +1644,12 @@ app.post(
         .eq("email", user.email)
         .single();
 
-      const currentDate = new Date().toISOString().split("T")[0];
-      const futureDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      const currentDate = new Date()
+        .toISOString()
+        .split("T")[0];
+      const futureDate = new Date(
+        Date.now() + 365 * 24 * 60 * 60 * 1000,
+      )
         .toISOString()
         .split("T")[0];
 
@@ -1594,7 +1664,8 @@ app.post(
               project_type: projectType,
               road_number: roadNumber,
               road_name: roadName,
-              work_order_description: description || "تم إنشاؤه بواسطة المساعد الذكي",
+              work_order_description:
+                description || "تم إنشاؤه بواسطة المساعد الذكي",
               project_number: projectNumber,
               duration: 12,
               site_handover_date: currentDate,
@@ -1619,11 +1690,16 @@ app.post(
           .single();
 
       if (projectError) {
-        console.log(`[AI CREATE PROJECT] Error: ${projectError.message}`);
+        console.log(
+          `[AI CREATE PROJECT] Error: ${projectError.message}`,
+        );
         return c.json({ error: projectError.message }, 400);
       }
 
-      console.log(`[AI CREATE PROJECT] Successfully created project:`, project);
+      console.log(
+        `[AI CREATE PROJECT] Successfully created project:`,
+        project,
+      );
 
       // إنشاء إشعار
       await supabaseAdmin.from("notifications").insert([
@@ -1684,5 +1760,918 @@ console.log(
 );
 console.log("📊 Using PostgreSQL database via Supabase");
 console.log("🤖 AI Assistant is active and role-based");
+
+// ============================================
+// 📊 Daily Reports (KV Store) Routes
+// ============================================
+
+// Create Daily Report (KV)
+app.post(
+  "/make-server-a52c947c/daily-reports-kv",
+  async (c) => {
+    try {
+      const accessToken = c.req
+        .header("Authorization")
+        ?.split(" ")[1];
+      const {
+        data: { user },
+        error,
+      } = await supabaseAdmin.auth.getUser(accessToken);
+
+      if (!user || error) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+
+      const { data: currentUser } = await supabaseAdmin
+        .from("users")
+        .select("id, name")
+        .eq("email", user.email)
+        .single();
+
+      if (!currentUser) {
+        return c.json({ error: "User not found" }, 404);
+      }
+
+      const reportData = await c.req.json();
+
+      // Generate report number
+      const reportNumber = `DR-${Date.now()}`;
+
+      // Calculate total workers
+      const saudiWorkers =
+        parseInt(reportData.saudiWorkers) || 0;
+      const nonSaudiWorkers =
+        parseInt(reportData.nonSaudiWorkers) || 0;
+      const totalWorkers = saudiWorkers + nonSaudiWorkers;
+
+      // Get project name if projectId provided
+      let projectName = null;
+      if (reportData.projectId) {
+        const { data: project } = await supabaseAdmin
+          .from("projects")
+          .select("work_order_description, project_number")
+          .eq("id", reportData.projectId)
+          .single();
+
+        if (project) {
+          projectName = `${project.work_order_description} (${project.project_number})`;
+        }
+      }
+
+      const report = {
+        id: crypto.randomUUID(),
+        reportNumber,
+        reportDate: reportData.reportDate,
+        projectId: reportData.projectId || null,
+        projectName,
+        location: reportData.location || null,
+        weatherCondition: reportData.weatherCondition || null,
+        temperature: reportData.temperature || null,
+        workHoursFrom: reportData.workHoursFrom || null,
+        workHoursTo: reportData.workHoursTo || null,
+        saudiWorkers,
+        nonSaudiWorkers,
+        totalWorkers,
+        equipmentUsed: reportData.equipmentUsed || null,
+        workDescription: reportData.workDescription || null,
+        dailyProgress:
+          parseFloat(reportData.dailyProgress) || null,
+        executedQuantities:
+          reportData.executedQuantities || null,
+        materialsUsed: reportData.materialsUsed || null,
+        problems: reportData.problems || null,
+        accidents: reportData.accidents || null,
+        officialVisits: reportData.officialVisits || null,
+        recommendations: reportData.recommendations || null,
+        generalNotes: reportData.generalNotes || null,
+        images: [],
+        createdBy: currentUser.id,
+        createdByName: currentUser.name,
+        createdAt: new Date().toISOString(),
+      };
+
+      // Save to KV store
+      await kv.set(`daily_report:${report.id}`, report);
+
+      // Create notification
+      await supabaseAdmin.from("notifications").insert([
+        {
+          title: "تقرير يومي جديد",
+          message: `تم إضافة تقرير يومي جديد: ${reportNumber} - ${reportData.workDescription?.substring(0, 50) || "تقرير جديد"}`,
+          type:
+            reportData.problems || reportData.accidents
+              ? "warning"
+              : "info",
+          user_id: null,
+        },
+      ]);
+
+      return c.json({
+        report,
+        message: "تم إنشاء التقرير اليومي بنجاح",
+      });
+    } catch (error) {
+      console.log(`Error creating daily report (KV): ${error}`);
+      return c.json(
+        { error: "خطأ في إنشاء التقرير اليومي" },
+        500,
+      );
+    }
+  },
+);
+
+// Get All Daily Reports (KV)
+app.get("/make-server-a52c947c/daily-reports-kv", async (c) => {
+  try {
+    const accessToken = c.req
+      .header("Authorization")
+      ?.split(" ")[1];
+    const {
+      data: { user },
+      error,
+    } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (!user || error) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    // Get all reports from KV store
+    const allReports = await kv.getByPrefix("daily_report:");
+
+    // Sort by date descending
+    const sortedReports = allReports.sort(
+      (a: any, b: any) =>
+        new Date(b.reportDate).getTime() -
+        new Date(a.reportDate).getTime(),
+    );
+
+    return c.json({ reports: sortedReports });
+  } catch (error) {
+    console.log(`Error fetching daily reports (KV): ${error}`);
+    return c.json(
+      { error: "خطأ في جلب التقارير اليومية" },
+      500,
+    );
+  }
+});
+
+// Get Reports by Project ID (KV)
+app.get(
+  "/make-server-a52c947c/daily-reports-kv/project/:projectId",
+  async (c) => {
+    try {
+      const accessToken = c.req
+        .header("Authorization")
+        ?.split(" ")[1];
+      const {
+        data: { user },
+        error,
+      } = await supabaseAdmin.auth.getUser(accessToken);
+
+      if (!user || error) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+
+      const projectId = c.req.param("projectId");
+
+      // Get all reports and filter by project
+      const allReports = await kv.getByPrefix("daily_report:");
+      const projectReports = allReports.filter(
+        (r: any) => r.projectId === projectId,
+      );
+
+      return c.json({ reports: projectReports });
+    } catch (error) {
+      console.log(
+        `Error fetching project reports (KV): ${error}`,
+      );
+      return c.json(
+        { error: "خطأ في جلب تقارير المشروع" },
+        500,
+      );
+    }
+  },
+);
+
+// Update Daily Report (KV)
+app.put(
+  "/make-server-a52c947c/daily-reports-kv/:id",
+  async (c) => {
+    try {
+      const accessToken = c.req
+        .header("Authorization")
+        ?.split(" ")[1];
+      const {
+        data: { user },
+        error,
+      } = await supabaseAdmin.auth.getUser(accessToken);
+
+      if (!user || error) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+
+      const { data: currentUser } = await supabaseAdmin
+        .from("users")
+        .select("id, role")
+        .eq("email", user.email)
+        .single();
+
+      if (!currentUser) {
+        return c.json({ error: "User not found" }, 404);
+      }
+
+      const reportId = c.req.param("id");
+      const reportData = await c.req.json();
+
+      // Get existing report
+      const existingReport = await kv.get(
+        `daily_report:${reportId}`,
+      );
+
+      if (!existingReport) {
+        return c.json({ error: "Report not found" }, 404);
+      }
+
+      // Check permissions
+      const isGeneralManager =
+        currentUser.role === "General Manager" ||
+        currentUser.role === "المدير العام" ||
+        currentUser.role === "general_manager";
+      const isOwner =
+        existingReport.createdBy === currentUser.id;
+
+      if (!isGeneralManager && !isOwner) {
+        return c.json(
+          { error: "Unauthorized to edit this report" },
+          403,
+        );
+      }
+
+      // Calculate total workers
+      const saudiWorkers =
+        parseInt(reportData.saudiWorkers) || 0;
+      const nonSaudiWorkers =
+        parseInt(reportData.nonSaudiWorkers) || 0;
+      const totalWorkers = saudiWorkers + nonSaudiWorkers;
+
+      // Get project name if projectId provided
+      let projectName = null;
+      if (reportData.projectId) {
+        const { data: project } = await supabaseAdmin
+          .from("projects")
+          .select("work_order_description, project_number")
+          .eq("id", reportData.projectId)
+          .single();
+
+        if (project) {
+          projectName = `${project.work_order_description} (${project.project_number})`;
+        }
+      }
+
+      const updatedReport = {
+        ...existingReport,
+        reportDate: reportData.reportDate,
+        projectId: reportData.projectId || null,
+        projectName,
+        location: reportData.location || null,
+        weatherCondition: reportData.weatherCondition || null,
+        temperature: reportData.temperature || null,
+        workHoursFrom: reportData.workHoursFrom || null,
+        workHoursTo: reportData.workHoursTo || null,
+        saudiWorkers,
+        nonSaudiWorkers,
+        totalWorkers,
+        equipmentUsed: reportData.equipmentUsed || null,
+        workDescription: reportData.workDescription || null,
+        dailyProgress:
+          parseFloat(reportData.dailyProgress) || null,
+        executedQuantities:
+          reportData.executedQuantities || null,
+        materialsUsed: reportData.materialsUsed || null,
+        problems: reportData.problems || null,
+        accidents: reportData.accidents || null,
+        officialVisits: reportData.officialVisits || null,
+        recommendations: reportData.recommendations || null,
+        generalNotes: reportData.generalNotes || null,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await kv.set(`daily_report:${reportId}`, updatedReport);
+
+      // Create notification
+      await supabaseAdmin.from("notifications").insert([
+        {
+          title: "تحديث تقرير يومي",
+          message: `تم تحديث التقرير: ${existingReport.reportNumber}`,
+          type: "info",
+          user_id: null,
+        },
+      ]);
+
+      return c.json({
+        report: updatedReport,
+        message: "تم تحديث التقرير اليومي بنجاح",
+      });
+    } catch (error) {
+      console.log(`Error updating daily report (KV): ${error}`);
+      return c.json(
+        { error: "خطأ في تحديث التقرير اليومي" },
+        500,
+      );
+    }
+  },
+);
+
+// Delete Daily Report (KV)
+app.delete(
+  "/make-server-a52c947c/daily-reports-kv/:id",
+  async (c) => {
+    try {
+      const accessToken = c.req
+        .header("Authorization")
+        ?.split(" ")[1];
+      const {
+        data: { user },
+        error,
+      } = await supabaseAdmin.auth.getUser(accessToken);
+
+      if (!user || error) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+
+      const { data: currentUser } = await supabaseAdmin
+        .from("users")
+        .select("role")
+        .eq("email", user.email)
+        .single();
+
+      if (!currentUser) {
+        return c.json({ error: "User not found" }, 404);
+      }
+
+      // Only general manager can delete
+      if (currentUser.role !== "general_manager") {
+        return c.json(
+          { error: "Unauthorized to delete reports" },
+          403,
+        );
+      }
+
+      const reportId = c.req.param("id");
+
+      // Get report to get report number for notification
+      const existingReport = await kv.get(
+        `daily_report:${reportId}`,
+      );
+
+      await kv.del(`daily_report:${reportId}`);
+
+      // Create notification
+      await supabaseAdmin.from("notifications").insert([
+        {
+          title: "حذف تقرير يومي",
+          message: `تم حذف التقرير: ${existingReport?.reportNumber || reportId}`,
+          type: "warning",
+          user_id: null,
+        },
+      ]);
+
+      return c.json({ message: "تم حذف التقرير اليومي بنجاح" });
+    } catch (error) {
+      console.log(`Error deleting daily report (KV): ${error}`);
+      return c.json(
+        { error: "خطأ في حذف التقرير اليومي" },
+        500,
+      );
+    }
+  },
+);
+
+// ============================================
+// 📊 Daily Reports SQL Routes
+// ============================================
+
+// Create Daily Report (SQL)
+app.post(
+  "/make-server-a52c947c/daily-reports-sql",
+  async (c) => {
+    try {
+      const accessToken = c.req
+        .header("Authorization")
+        ?.split(" ")[1];
+      const {
+        data: { user },
+        error,
+      } = await supabaseAdmin.auth.getUser(accessToken);
+
+      if (!user || error) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+
+      const { data: currentUser } = await supabaseAdmin
+        .from("users")
+        .select("id, name")
+        .eq("email", user.email)
+        .single();
+
+      if (!currentUser) {
+        return c.json({ error: "User not found" }, 404);
+      }
+
+      const reportData = await c.req.json();
+
+      // Generate unique report number
+      const reportNumber = `DR-${Date.now()}`;
+
+      // Prepare insert data (all optional except date and created_by)
+      const insertData: any = {
+        report_number: reportNumber,
+        report_date: reportData.reportDate,
+        created_by: currentUser.id,
+      };
+
+      // Add optional fields only if they have values
+      if (reportData.projectId)
+        insertData.project_id = reportData.projectId;
+      if (reportData.location)
+        insertData.location = reportData.location;
+      if (reportData.weatherCondition)
+        insertData.weather_condition =
+          reportData.weatherCondition;
+      if (reportData.temperature)
+        insertData.temperature = reportData.temperature;
+      if (reportData.workHoursFrom)
+        insertData.work_hours_from = reportData.workHoursFrom;
+      if (reportData.workHoursTo)
+        insertData.work_hours_to = reportData.workHoursTo;
+      if (reportData.saudiWorkers)
+        insertData.saudi_workers = parseInt(
+          reportData.saudiWorkers,
+        );
+      if (reportData.nonSaudiWorkers)
+        insertData.non_saudi_workers = parseInt(
+          reportData.nonSaudiWorkers,
+        );
+      if (reportData.equipmentUsed)
+        insertData.equipment_used = reportData.equipmentUsed;
+      if (reportData.workDescription)
+        insertData.work_description =
+          reportData.workDescription;
+      if (reportData.dailyProgress)
+        insertData.daily_progress = parseFloat(
+          reportData.dailyProgress,
+        );
+      if (reportData.executedQuantities)
+        insertData.executed_quantities =
+          reportData.executedQuantities;
+      if (reportData.materialsUsed)
+        insertData.materials_used = reportData.materialsUsed;
+      if (reportData.problems)
+        insertData.problems = reportData.problems;
+      if (reportData.accidents)
+        insertData.accidents = reportData.accidents;
+      if (reportData.officialVisits)
+        insertData.official_visits = reportData.officialVisits;
+      if (reportData.recommendations)
+        insertData.recommendations = reportData.recommendations;
+      if (reportData.generalNotes)
+        insertData.general_notes = reportData.generalNotes;
+
+      // Insert into database
+      const { data: newReport, error: insertError } =
+        await supabaseAdmin
+          .from("daily_reports_new")
+          .insert(insertData)
+          .select(
+            `
+        *,
+        projects:project_id(id, project_number, work_order_description),
+        users:created_by(id, name)
+      `,
+          )
+          .single();
+
+      if (insertError) {
+        console.log(
+          `Error inserting daily report: ${insertError.message}`,
+        );
+        return c.json(
+          { error: "خطأ في إنشاء التقرير اليومي" },
+          500,
+        );
+      }
+
+      // Create notification
+      await supabaseAdmin.from("notifications").insert([
+        {
+          title: "تقرير يومي جديد",
+          message: `تم إضافة تقرير يومي جديد: ${reportNumber} - ${reportData.workDescription?.substring(0, 50) || "تقرير جديد"}`,
+          type:
+            reportData.problems || reportData.accidents
+              ? "warning"
+              : "info",
+          user_id: null,
+        },
+      ]);
+
+      return c.json({
+        report: newReport,
+        message: "تم إنشاء التقرير اليومي بنجاح",
+      });
+    } catch (error) {
+      console.log(
+        `Error creating daily report (SQL): ${error}`,
+      );
+      return c.json(
+        { error: "خطأ في إنشاء التقرير اليومي" },
+        500,
+      );
+    }
+  },
+);
+
+// Get All Daily Reports (SQL)
+app.get(
+  "/make-server-a52c947c/daily-reports-sql",
+  async (c) => {
+    try {
+      const accessToken = c.req
+        .header("Authorization")
+        ?.split(" ")[1];
+      const {
+        data: { user },
+        error,
+      } = await supabaseAdmin.auth.getUser(accessToken);
+
+      if (!user || error) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+
+      // Fetch all reports with relations
+      const { data: reports, error: fetchError } =
+        await supabaseAdmin
+          .from("daily_reports_new")
+          .select(
+            `
+        *,
+        projects:project_id(id, project_number, work_order_description),
+        users:created_by(id, name)
+      `,
+          )
+          .order("report_date", { ascending: false });
+
+      if (fetchError) {
+        console.log(
+          `Error fetching daily reports: ${fetchError.message}`,
+        );
+        return c.json(
+          { error: "خطأ في جلب التقارير اليومية" },
+          500,
+        );
+      }
+
+      // Transform data to match frontend interface
+      const transformedReports = reports.map((report: any) => ({
+        id: report.id,
+        reportNumber: report.report_number,
+        reportDate: report.report_date,
+        projectId: report.project_id,
+        projectName: report.projects
+          ? `${report.projects.work_order_description} (${report.projects.project_number})`
+          : null,
+        location: report.location,
+        weatherCondition: report.weather_condition,
+        temperature: report.temperature,
+        workHoursFrom: report.work_hours_from,
+        workHoursTo: report.work_hours_to,
+        saudiWorkers: report.saudi_workers,
+        nonSaudiWorkers: report.non_saudi_workers,
+        totalWorkers: report.total_workers,
+        equipmentUsed: report.equipment_used,
+        workDescription: report.work_description,
+        dailyProgress: report.daily_progress,
+        executedQuantities: report.executed_quantities,
+        materialsUsed: report.materials_used,
+        problems: report.problems,
+        accidents: report.accidents,
+        officialVisits: report.official_visits,
+        recommendations: report.recommendations,
+        generalNotes: report.general_notes,
+        images: report.images || [],
+        createdBy: report.created_by,
+        createdByName: report.users?.name || "Unknown",
+        createdAt: report.created_at,
+        updatedAt: report.updated_at,
+      }));
+
+      return c.json({ reports: transformedReports });
+    } catch (error) {
+      console.log(
+        `Error fetching daily reports (SQL): ${error}`,
+      );
+      return c.json(
+        { error: "خطأ في جلب التقارير اليومية" },
+        500,
+      );
+    }
+  },
+);
+
+// Update Daily Report (SQL)
+app.put(
+  "/make-server-a52c947c/daily-reports-sql/:id",
+  async (c) => {
+    try {
+      const accessToken = c.req
+        .header("Authorization")
+        ?.split(" ")[1];
+      const {
+        data: { user },
+        error,
+      } = await supabaseAdmin.auth.getUser(accessToken);
+
+      if (!user || error) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+
+      const { data: currentUser } = await supabaseAdmin
+        .from("users")
+        .select("id, role")
+        .eq("email", user.email)
+        .single();
+
+      if (!currentUser) {
+        return c.json({ error: "User not found" }, 404);
+      }
+
+      const reportId = c.req.param("id");
+      const reportData = await c.req.json();
+
+      // Get existing report to check ownership
+      const { data: existingReport } = await supabaseAdmin
+        .from("daily_reports_new")
+        .select("created_by")
+        .eq("id", reportId)
+        .single();
+
+      if (!existingReport) {
+        return c.json({ error: "Report not found" }, 404);
+      }
+
+      // Check permissions: general_manager OR owner
+      const isGeneralManager =
+        currentUser.role === "General Manager" ||
+        currentUser.role === "المدير العام" ||
+        currentUser.role === "general_manager";
+      const isOwner =
+        existingReport.created_by === currentUser.id;
+
+      if (!isGeneralManager && !isOwner) {
+        return c.json(
+          { error: "Unauthorized to edit this report" },
+          403,
+        );
+      }
+
+      // Prepare update data
+      const updateData: any = {
+        report_date: reportData.reportDate,
+        project_id: reportData.projectId || null,
+        location: reportData.location || null,
+        weather_condition: reportData.weatherCondition || null,
+        temperature: reportData.temperature || null,
+        work_hours_from: reportData.workHoursFrom || null,
+        work_hours_to: reportData.workHoursTo || null,
+        saudi_workers: reportData.saudiWorkers
+          ? parseInt(reportData.saudiWorkers)
+          : null,
+        non_saudi_workers: reportData.nonSaudiWorkers
+          ? parseInt(reportData.nonSaudiWorkers)
+          : null,
+        equipment_used: reportData.equipmentUsed || null,
+        work_description: reportData.workDescription || null,
+        daily_progress: reportData.dailyProgress
+          ? parseFloat(reportData.dailyProgress)
+          : null,
+        executed_quantities:
+          reportData.executedQuantities || null,
+        materials_used: reportData.materialsUsed || null,
+        problems: reportData.problems || null,
+        accidents: reportData.accidents || null,
+        official_visits: reportData.officialVisits || null,
+        recommendations: reportData.recommendations || null,
+        general_notes: reportData.generalNotes || null,
+      };
+
+      // Update in database
+      const { data: updatedReport, error: updateError } =
+        await supabaseAdmin
+          .from("daily_reports_new")
+          .update(updateData)
+          .eq("id", reportId)
+          .select(
+            `
+        *,
+        projects:project_id(id, project_number, work_order_description),
+        users:created_by(id, name)
+      `,
+          )
+          .single();
+
+      if (updateError) {
+        console.log(
+          `Error updating daily report: ${updateError.message}`,
+        );
+        return c.json(
+          { error: "خطأ في تحديث التقرير اليومي" },
+          500,
+        );
+      }
+
+      // Create notification
+      await supabaseAdmin.from("notifications").insert([
+        {
+          title: "تحديث تقرير يومي",
+          message: `تم تحديث التقرير: ${updatedReport.report_number}`,
+          type: "info",
+          user_id: null,
+        },
+      ]);
+
+      return c.json({
+        report: updatedReport,
+        message: "تم تحديث التقرير اليومي بنجاح",
+      });
+    } catch (error) {
+      console.log(
+        `Error updating daily report (SQL): ${error}`,
+      );
+      return c.json(
+        { error: "خطأ في تحديث التقرير اليومي" },
+        500,
+      );
+    }
+  },
+);
+
+// Delete Daily Report (SQL)
+app.delete(
+  "/make-server-a52c947c/daily-reports-sql/:id",
+  async (c) => {
+    try {
+      const accessToken = c.req
+        .header("Authorization")
+        ?.split(" ")[1];
+      const {
+        data: { user },
+        error,
+      } = await supabaseAdmin.auth.getUser(accessToken);
+
+      if (!user || error) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+
+      const { data: currentUser } = await supabaseAdmin
+        .from("users")
+        .select("role")
+        .eq("email", user.email)
+        .single();
+
+      if (!currentUser) {
+        return c.json({ error: "User not found" }, 404);
+      }
+
+      // Only general_manager can delete
+      if (currentUser.role !== "general_manager") {
+        return c.json(
+          { error: "Unauthorized to delete reports" },
+          403,
+        );
+      }
+
+      const reportId = c.req.param("id");
+
+      // Get report details for notification
+      const { data: report } = await supabaseAdmin
+        .from("daily_reports_new")
+        .select("report_number")
+        .eq("id", reportId)
+        .single();
+
+      // Delete from database
+      const { error: deleteError } = await supabaseAdmin
+        .from("daily_reports_new")
+        .delete()
+        .eq("id", reportId);
+
+      if (deleteError) {
+        console.log(
+          `Error deleting daily report: ${deleteError.message}`,
+        );
+        return c.json(
+          { error: "خطأ في حذف التقرير اليومي" },
+          500,
+        );
+      }
+
+      // Create notification
+      await supabaseAdmin.from("notifications").insert([
+        {
+          title: "حذف تقرير يومي",
+          message: `تم حذف التقرير: ${report?.report_number || reportId}`,
+          type: "warning",
+          user_id: null,
+        },
+      ]);
+
+      return c.json({ message: "تم حذف التقرير اليومي بنجاح" });
+    } catch (error) {
+      console.log(
+        `Error deleting daily report (SQL): ${error}`,
+      );
+      return c.json(
+        { error: "خطأ في حذف التقرير اليومي" },
+        500,
+      );
+    }
+  },
+);
+
+// Export Daily Report (Word/Excel/PDF) - FIXED WITH HELPER
+app.get(
+  "/make-server-a52c947c/daily-reports-sql/:id/export/:format",
+  async (c) => {
+    try {
+      console.log("🔍 Export request started");
+      
+      const accessToken = c.req.header("Authorization")?.split(" ")[1];
+      const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+      if (!user || error) {
+        console.log("❌ Unauthorized");
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+
+      const reportId = c.req.param("id");
+      const format = c.req.param("format");
+      console.log(`📄 Exporting report ${reportId} as ${format}`);
+
+      const { data: report, error: fetchError } = await supabaseAdmin
+        .from("daily_reports_new")
+        .select(`*, projects:project_id(id, project_number, work_order_description), users:created_by(id, name)`)
+        .eq("id", reportId)
+        .single();
+
+      if (fetchError || !report) {
+        console.log("❌ Report not found:", fetchError);
+        return c.json({ error: "Report not found" }, 404);
+      }
+
+      console.log("✅ Report found:", report.report_number);
+
+      if (format === "word") {
+        const html = generateWordHTML(report);
+        console.log("✅ Word HTML generated, length:", html.length);
+        
+        // Return HTML as Word-compatible document
+        // Word can open HTML files with proper styling
+        return new Response(html, {
+          headers: {
+            "Content-Type": "application/msword; charset=utf-8",
+            "Content-Disposition": `attachment; filename="Report_${report.report_number}.doc"`,
+          },
+        });
+      } else if (format === "excel") {
+        const csv = generateExcelCSV(report);
+        console.log("✅ Excel CSV generated, length:", csv.length);
+        
+        // Return as proper Excel CSV with UTF-8 BOM
+        return new Response(csv, {
+          headers: {
+            "Content-Type": "application/vnd.ms-excel; charset=utf-8",
+            "Content-Disposition": `attachment; filename="Report_${report.report_number}.xls"`,
+          },
+        });
+      } else if (format === "pdf") {
+        const html = generatePDFHTML(report);
+        console.log("✅ PDF HTML generated, length:", html.length);
+        
+        // Return HTML that opens in new tab for Print to PDF
+        return new Response(html, {
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Content-Disposition": `inline`,
+          },
+        });
+      }
+
+      return c.json({ error: "Invalid format" }, 400);
+    } catch (error) {
+      console.log(`❌ Error exporting: ${error}`);
+      console.log(`❌ Stack: ${error.stack}`);
+      return c.json({ error: "خطأ في التصدير" }, 500);
+    }
+  },
+);
 
 Deno.serve(app.fetch);

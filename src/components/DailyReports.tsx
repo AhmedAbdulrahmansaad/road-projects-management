@@ -55,10 +55,8 @@ interface DailyReport {
   workDescription: string;
   workersCount: number;
   equipment: string;
-  dailyProgress: number;
   weatherCondition: string;
   notes: string;
-  issues: string;
   images: string[];
   createdBy: string;
   createdByName?: string;
@@ -84,10 +82,8 @@ export const DailyReports: React.FC = () => {
     workDescription: '',
     workersCount: '',
     equipment: '',
-    dailyProgress: '',
     weatherCondition: 'مشمس',
     notes: '',
-    issues: '',
   });
 
   // Get user role
@@ -106,10 +102,8 @@ export const DailyReports: React.FC = () => {
     workDescription: '',
     workersCount: '',
     equipment: '',
-    dailyProgress: '',
     weatherCondition: 'مشمس',
     notes: '',
-    issues: '',
   });
 
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
@@ -246,10 +240,8 @@ export const DailyReports: React.FC = () => {
       workDescription: '',
       workersCount: '',
       equipment: '',
-      dailyProgress: '',
       weatherCondition: 'مشمس',
       notes: '',
-      issues: '',
     });
     setUploadedFiles([]);
     setUploadedImages([]);
@@ -268,11 +260,9 @@ export const DailyReports: React.FC = () => {
         ['وصف الأعمال', report.workDescription],
         ['عدد العمال', report.workersCount.toString()],
         ['المعدات', report.equipment || '-'],
-        ['التقدم اليومي', `${report.dailyProgress}%`],
         ['حالة الطقس', report.weatherCondition],
         ['', ''],
         ['المشاكل والملاحظات', ''],
-        ['المشاكل', report.issues || '-'],
         ['ملاحظات', report.notes || '-'],
         ['', ''],
         ['معلومات إضافية', ''],
@@ -358,12 +348,6 @@ export const DailyReports: React.FC = () => {
                 }),
                 new TableRow({
                   children: [
-                    new TableCell({ children: [new Paragraph({ text: 'التقدم اليومي', alignment: AlignmentType.RIGHT })] }),
-                    new TableCell({ children: [new Paragraph({ text: `${report.dailyProgress}%`, alignment: AlignmentType.RIGHT })] }),
-                  ],
-                }),
-                new TableRow({
-                  children: [
                     new TableCell({ children: [new Paragraph({ text: 'حالة الطقس', alignment: AlignmentType.RIGHT })] }),
                     new TableCell({ children: [new Paragraph({ text: report.weatherCondition, alignment: AlignmentType.RIGHT })] }),
                   ],
@@ -378,12 +362,6 @@ export const DailyReports: React.FC = () => {
             new Table({
               width: { size: 100, type: WidthType.PERCENTAGE },
               rows: [
-                new TableRow({
-                  children: [
-                    new TableCell({ children: [new Paragraph({ text: 'المشاكل', alignment: AlignmentType.RIGHT })] }),
-                    new TableCell({ children: [new Paragraph({ text: report.issues || '-', alignment: AlignmentType.RIGHT })] }),
-                  ],
-                }),
                 new TableRow({
                   children: [
                     new TableCell({ children: [new Paragraph({ text: 'ملاحظات', alignment: AlignmentType.RIGHT })] }),
@@ -514,12 +492,6 @@ export const DailyReports: React.FC = () => {
                 <td style="padding: 12px; border: 1px solid #dddddd;">${report.equipment || 'لا يوجد'}</td>
               </tr>
               <tr>
-                <td style="padding: 12px; background: #f5f5f5; border: 1px solid #dddddd; font-weight: bold;">📊 التقدم اليومي</td>
-                <td style="padding: 12px; border: 1px solid #dddddd;">
-                  <span style="background: #006C35; color: #ffffff; padding: 4px 12px; border-radius: 4px; font-weight: bold;">${report.dailyProgress}%</span>
-                </td>
-              </tr>
-              <tr>
                 <td style="padding: 12px; background: #f5f5f5; border: 1px solid #dddddd; font-weight: bold;">🌤️ حالة الطقس</td>
                 <td style="padding: 12px; border: 1px solid #dddddd;">${report.weatherCondition}</td>
               </tr>
@@ -530,11 +502,7 @@ export const DailyReports: React.FC = () => {
             <h2 style="font-size: 22px; color: #006C35; margin: 0 0 15px 0; padding-bottom: 10px; border-bottom: 3px solid #FDB714; font-weight: bold;">⚠️ المشاكل والملاحظات</h2>
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
               <tr>
-                <td style="padding: 12px; background: #f5f5f5; border: 1px solid #dddddd; font-weight: bold; width: 35%;">🔴 المشاكل</td>
-                <td style="padding: 12px; border: 1px solid #dddddd; line-height: 1.8;">${report.issues || 'لا توجد مشاكل'}</td>
-              </tr>
-              <tr>
-                <td style="padding: 12px; background: #f5f5f5; border: 1px solid #dddddd; font-weight: bold;">📌 ملاحظات إضافية</td>
+                <td style="padding: 12px; background: #f5f5f5; border: 1px solid #dddddd; font-weight: bold; width: 35%;">📌 ملاحظات إضافية</td>
                 <td style="padding: 12px; border: 1px solid #dddddd; line-height: 1.8;">${report.notes || 'لا توجد ملاحظات'}</td>
               </tr>
             </table>
@@ -678,7 +646,7 @@ export const DailyReports: React.FC = () => {
                           <Label htmlFor="projectId">المشروع *</Label>
                           <Select value={formData.projectId} onValueChange={(v) => handleChange('projectId', v)} required>
                             <SelectTrigger>
-                              <SelectValue placeholder="اختر المشروع" />
+                              <SelectValue placeholder="اختر مشروع" />
                             </SelectTrigger>
                             <SelectContent>
                               {projects.map(project => (
@@ -732,20 +700,6 @@ export const DailyReports: React.FC = () => {
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="dailyProgress">التقدم اليومي (%)</Label>
-                          <Input
-                            id="dailyProgress"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            max="100"
-                            value={formData.dailyProgress}
-                            onChange={(e) => handleChange('dailyProgress', e.target.value)}
-                            placeholder="0.00"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
                           <Label htmlFor="weatherCondition">حالة الطقس</Label>
                           <Select value={formData.weatherCondition} onValueChange={(v) => handleChange('weatherCondition', v)}>
                             <SelectTrigger>
@@ -760,41 +714,29 @@ export const DailyReports: React.FC = () => {
                             </SelectContent>
                           </Select>
                         </div>
-                      </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="equipment">المعدات المستخدمة</Label>
-                        <Textarea
-                          id="equipment"
-                          value={formData.equipment}
-                          onChange={(e) => handleChange('equipment', e.target.value)}
-                          placeholder="مثال: حفار كاتربلر 320، شاحنة مرسيدس، رافعة..."
-                          rows={2}
-                        />
+                        <div className="space-y-2">
+                          <Label htmlFor="equipment">المعدات المستخدمة</Label>
+                          <Input
+                            id="equipment"
+                            value={formData.equipment}
+                            onChange={(e) => handleChange('equipment', e.target.value)}
+                            placeholder="مثال: حفار، شاحنة، رافعة..."
+                          />
+                        </div>
                       </div>
                     </div>
 
                     <div className="space-y-4">
-                      <h3 className="text-xl font-bold border-b-2 border-chart-2/20 pb-2">المشاكل والملاحظات</h3>
+                      <h3 className="text-xl font-bold border-b-2 border-chart-2/20 pb-2">الملاحظات</h3>
                       
-                      <div className="space-y-2">
-                        <Label htmlFor="issues">المشاكل/العقبات</Label>
-                        <Textarea
-                          id="issues"
-                          value={formData.issues}
-                          onChange={(e) => handleChange('issues', e.target.value)}
-                          placeholder="أي مشاكل أو عقبات واجهت فريق العمل..."
-                          rows={3}
-                        />
-                      </div>
-
                       <div className="space-y-2">
                         <Label htmlFor="notes">ملاحظات إضافية</Label>
                         <Textarea
                           id="notes"
                           value={formData.notes}
                           onChange={(e) => handleChange('notes', e.target.value)}
-                          placeholder="ملاحظات عامة..."
+                          placeholder="أي ملاحظات إضافية..."
                           rows={3}
                         />
                       </div>
@@ -937,7 +879,6 @@ export const DailyReports: React.FC = () => {
                   <TableHead className="text-center min-w-[200px]">المشروع</TableHead>
                   <TableHead className="text-center min-w-[250px]">وصف الأعمال</TableHead>
                   <TableHead className="text-center">العمال</TableHead>
-                  <TableHead className="text-center">التقدم اليومي</TableHead>
                   <TableHead className="text-center">الطقس</TableHead>
                   <TableHead className="text-center">مضاف بواسطة</TableHead>
                   <TableHead className="text-center">الإجراءات</TableHead>
@@ -946,7 +887,7 @@ export const DailyReports: React.FC = () => {
               <TableBody>
                 {filteredReports.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       لا توجد تقارير يومية
                     </TableCell>
                   </TableRow>
@@ -967,9 +908,6 @@ export const DailyReports: React.FC = () => {
                           <Users className="h-4 w-4 text-muted-foreground" />
                           {report.workersCount}
                         </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant="outline">{report.dailyProgress}%</Badge>
                       </TableCell>
                       <TableCell className="text-center">
                         {report.weatherCondition}

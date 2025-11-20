@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { CreateProject } from './CreateProject';
 import { ProjectsList } from './ProjectsList';
 import { ReportsPage } from './ReportsPage';
-import { DailyReports } from './DailyReports';
+import { DailyReportsSQL } from './DailyReportsSQL';
 import { RealAIAssistant } from './RealAIAssistant';
 import { UserManagement } from './UserManagement';
 import { NotificationSystem } from './NotificationSystem';
@@ -46,7 +46,7 @@ export const Dashboard: React.FC = () => {
   const isEngineer = userRole === 'Engineer' || userRole === 'مهندس';
   
   const canEdit = isGeneralManager; // فقط المدير العام يمتلك كل الصلاحيات
-  const canViewDailyReports = isGeneralManager || isBranchGeneralManager || isSupervisorEngineer; // المدير العام ومدير عام الفرع والمهندس المش��ف
+  const canViewDailyReports = isGeneralManager || isBranchGeneralManager || isSupervisorEngineer; // المدير العام ومدير عام الفرع والمهندس المشف
   const canManageUsers = isGeneralManager; // فقط المدير العام يدير المستخدمين
   const canCreateProject = isGeneralManager || isSupervisorEngineer || isEngineer; // المدير العام والمهندس المشرف والمهندس
   const canCreateReport = isGeneralManager || isSupervisorEngineer || isEngineer; // المدير العام والمهندس المشرف والمهندس
@@ -450,7 +450,7 @@ export const Dashboard: React.FC = () => {
           {currentView === 'projects' && <ProjectsList />}
           {currentView === 'create' && <CreateProject onSuccess={() => setCurrentView('projects')} />}
           {currentView === 'reports' && <ReportsPage />}
-          {currentView === 'daily' && <DailyReports />}
+          {currentView === 'daily' && <DailyReportsSQL />}
           {currentView === 'ai' && (
             <div className="space-y-6 animate-fade-in-up">
               <Button

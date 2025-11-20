@@ -46,9 +46,12 @@ export const NotificationSystem: React.FC = () => {
         const data = await response.json();
         setNotifications(data.notifications || []);
         setUnreadCount(data.notifications?.filter((n: Notification) => !n.read).length || 0);
+      } else {
+        console.warn('Notifications fetch returned non-OK status:', response.status);
       }
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      console.warn('Error fetching notifications (server may not be ready):', error);
+      // Don't show error to user, just fail silently
     }
   };
 
