@@ -5,6 +5,7 @@ import { LandingPage } from './components/LandingPage';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
 import { Toaster } from './components/ui/sonner';
+import { ClearAuthCache } from './components/ClearAuthCache';
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
@@ -77,6 +78,7 @@ export default function App() {
   return (
     <LanguageProvider>
       <AuthProvider>
+        <ClearAuthCache />
         <AppContent />
         <Toaster position="top-center" dir="rtl" />
       </AuthProvider>

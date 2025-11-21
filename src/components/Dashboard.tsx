@@ -46,7 +46,7 @@ export const Dashboard: React.FC = () => {
   const isEngineer = userRole === 'Engineer' || userRole === 'مهندس';
   
   const canEdit = isGeneralManager; // فقط المدير العام يمتلك كل الصلاحيات
-  const canViewDailyReports = isGeneralManager || isBranchGeneralManager || isSupervisorEngineer; // المدير العام ومدير عام الفرع والمهندس المشف
+  const canViewDailyReports = isGeneralManager || isBranchGeneralManager || isSupervisorEngineer || isAdminManager; // المدير العام ومدير عام الفرع والمهندس المشرف والمدير الإداري
   const canManageUsers = isGeneralManager; // فقط المدير العام يدير المستخدمين
   const canCreateProject = isGeneralManager || isSupervisorEngineer || isEngineer; // المدير العام والمهندس المشرف والمهندس
   const canCreateReport = isGeneralManager || isSupervisorEngineer || isEngineer; // المدير العام والمهندس المشرف والمهندس

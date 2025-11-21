@@ -67,14 +67,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         error: error?.message 
       });
       
+      if (error) {
+        console.error('AuthContext: Session error:', error);
+        // Clear everything on error
+        setUser(null);
+        setAccessToken(null);
+        setRole(null);
+        setUserId(null);
+        return;
+      }
+      
       if (session?.access_token) {
+        console.log('AuthContext: Valid session found, fetching profile...');
         setAccessToken(session.access_token);
         await fetchUserProfile(session.access_token);
       } else {
         console.log('AuthContext: No active session found');
+        // Clear all auth state
+        setUser(null);
+        setAccessToken(null);
+        setRole(null);
+        setUserId(null);
       }
     } catch (error) {
       console.error('AuthContext: Error checking session:', error);
+      // Clear all auth state on error
+      setUser(null);
+      setAccessToken(null);
+      setRole(null);
+      setUserId(null);
     } finally {
       console.log('AuthContext: Session check complete, setting loading to false');
       setLoading(false);
@@ -82,12 +103,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const fetchUserProfile = async (token: string) => {
-    if (!token) {
-      console.log('No token provided to fetchUserProfile');
+    if (!token || token === 'undefined' || token === 'null') {
+      console.log('❌ No valid token provided to fetchUserProfile');
       return;
     }
 
     try {
+      console.log('🔍 Fetching user profile with token...');
       const response = await fetch(getServerUrl('/profile'), {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -96,17 +118,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (response.ok) {
         const data = await response.json();
-        console.log('🔍 AuthContext - Fetched user profile:', data.user);
+        console.log('✅ AuthContext - Fetched user profile:', data.user);
         setUser(data.user);
         setRole(data.user.role);
         setUserId(data.user.id);
         console.log('✅ AuthContext - Set role:', data.user.role, '| userId:', data.user.id);
       } else {
-        console.error('Failed to fetch user profile:', response.status, response.statusText);
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('❌ Failed to fetch user profile:', response.status, errorData);
+        
+        // If 401, token is invalid - clear auth state
+        if (response.status === 401) {
+          console.warn('⚠️ Token expired or invalid, clearing auth state...');
+          setUser(null);
+          setAccessToken(null);
+          setRole(null);
+          setUserId(null);
+          // Sign out from Supabase auth to clear localStorage
+          await supabase.auth.signOut();
+        }
       }
     } catch (error) {
-      console.error('Error fetching user profile:', error);
-      // Don't throw - just log the error
+      console.error('❌ Error fetching user profile:', error);
+      // Don't clear auth state on network errors, only on auth errors
     }
   };
 

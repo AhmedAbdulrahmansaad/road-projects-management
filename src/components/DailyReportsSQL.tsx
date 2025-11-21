@@ -57,7 +57,7 @@ interface DailyReport {
 
 export const DailyReportsSQL: React.FC = () => {
   const { language } = useLanguage();
-  const { accessToken, user } = useAuth();
+  const { accessToken, user, role: userRole } = useAuth(); // استخدام role من AuthContext مباشرة
   
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -337,15 +337,34 @@ export const DailyReportsSQL: React.FC = () => {
   );
 
   const canEdit = (report: DailyReport) => {
-    const isGeneralManager = user?.role === 'General Manager' || 
-                            user?.role === 'المدير العام' || 
-                            user?.role === 'general_manager';
+    const currentRole = userRole || user?.role; // استخدام role من context أو user
+    console.log('🔍 [canEdit] Current role:', currentRole);
+    const isGeneralManager = currentRole === 'General Manager' || 
+                            currentRole === 'المدير العام' || 
+                            currentRole === 'general_manager';
     return isGeneralManager || report.createdBy === user?.id;
   };
 
-  const canDelete = user?.role === 'General Manager' || 
-                   user?.role === 'المدير العام' || 
-                   user?.role === 'general_manager';
+  const currentRole = userRole || user?.role; // استخدام role من context أو user
+  console.log('🔍 [DailyReportsSQL] User role:', currentRole, '| User:', user);
+  
+  const canDelete = currentRole === 'General Manager' || 
+                   currentRole === 'المدير العام' || 
+                   currentRole === 'general_manager';
+
+  console.log('🗑️ [DailyReportsSQL] canDelete:', canDelete, '| Role:', currentRole);
+
+  // صلاحية إنشاء تقرير: المدير العام، المهندس المشرف، المهندس
+  const canCreateReport = currentRole === 'General Manager' || 
+                         currentRole === 'المدير العام' ||
+                         currentRole === 'Supervising Engineer' ||
+                         currentRole === 'المهندس المشرف' ||
+                         currentRole === 'Engineer' ||
+                         currentRole === 'مهندس';
+
+  // المدير الإداري يمكنه فقط العرض
+  const isViewOnlyUser = currentRole === 'Admin Manager' || 
+                        currentRole === 'مدير إداري';
 
   if (loading) {
     return (
@@ -368,13 +387,18 @@ export const DailyReportsSQL: React.FC = () => {
           </div>
           <div>
             <h1 className="text-3xl font-bold">التقارير اليومية</h1>
-            <p className="text-muted-foreground">إدارة ومتابعة التقارير اليومية للمشاريع</p>
+            <p className="text-muted-foreground">
+              {isViewOnlyUser ? 'عرض ومتابعة التقارير اليومية للمشاريع (عرض فقط)' : 'إدارة ومتابعة التقارير اليومية للمشاريع'}
+            </p>
           </div>
         </div>
-        <Button onClick={() => { resetForm(); setShowDialog(true); }} className="gap-2">
-          <Plus className="h-5 w-5" />
-          إنشاء تقرير يومي
-        </Button>
+        {/* إخفاء زر إنشاء تقرير للمدير الإداري */}
+        {canCreateReport && (
+          <Button onClick={() => { resetForm(); setShowDialog(true); }} className="gap-2">
+            <Plus className="h-5 w-5" />
+            إنشاء تقرير يومي
+          </Button>
+        )}
       </div>
 
       {/* Stats Cards */}

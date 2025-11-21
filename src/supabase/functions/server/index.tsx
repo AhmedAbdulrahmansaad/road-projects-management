@@ -63,6 +63,28 @@ app.post("/make-server-a52c947c/signup", async (c) => {
       `🟢 [SIGNUP] Received data: email=${email}, fullName=${fullName}, role=${role}`,
     );
 
+    // Check if user already exists in database
+    console.log("🟢 [SIGNUP] Checking if user exists...");
+    const { data: existingUser } = await supabaseAdmin
+      .from("users")
+      .select("id, email")
+      .eq("email", email)
+      .single();
+
+    if (existingUser) {
+      console.log(`⚠️ [SIGNUP] User already exists: ${email}`);
+      return c.json({ error: "هذا البريد الإلكتروني مسجل بالفعل" }, 400);
+    }
+
+    // Check if auth user exists
+    const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
+    const existingAuthUser = authUsers?.users?.find((u) => u.email === email);
+    
+    if (existingAuthUser) {
+      console.log(`⚠️ [SIGNUP] Auth user already exists: ${email}`);
+      return c.json({ error: "هذا البريد الإلكتروني مسجل بالفعل في نظام المصادقة" }, 400);
+    }
+
     // Hash password
     console.log("🟢 [SIGNUP] Hashing password...");
     const hashedPassword = await hashPassword(password);
@@ -87,7 +109,7 @@ app.post("/make-server-a52c947c/signup", async (c) => {
       console.error(
         `❌ [SIGNUP] Database insert error: ${JSON.stringify(error)}`,
       );
-      return c.json({ error: error.message }, 400);
+      return c.json({ error: `خطأ في إنشاء الحساب: ${error.message}` }, 400);
     }
 
     console.log(
@@ -120,7 +142,7 @@ app.post("/make-server-a52c947c/signup", async (c) => {
         .from("users")
         .delete()
         .eq("id", data.id);
-      return c.json({ error: authError.message }, 400);
+      return c.json({ error: `خطأ في إنشاء حساب المصادقة: ${authError.message}` }, 400);
     }
 
     console.log(`✅ [SIGNUP] Auth user created successfully`);
@@ -150,22 +172,45 @@ app.post("/make-server-a52c947c/signup", async (c) => {
 // Get User Profile
 app.get("/make-server-a52c947c/profile", async (c) => {
   try {
-    const accessToken = c.req
-      .header("Authorization")
-      ?.split(" ")[1];
-
-    if (!accessToken) {
-      return c.json({ error: "No access token" }, 401);
+    const authHeader = c.req.header("Authorization");
+    
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.error("❌ [PROFILE] No authorization header provided");
+      return c.json({ error: "No authorization header" }, 401);
     }
 
+    const accessToken = authHeader.split(" ")[1];
+
+    if (!accessToken || accessToken === "undefined" || accessToken === "null") {
+      console.error("❌ [PROFILE] Invalid access token");
+      return c.json({ error: "Invalid access token" }, 401);
+    }
+
+    console.log("🔍 [PROFILE] Verifying JWT token with admin client...");
+
+    // Use service role to verify the JWT token
     const {
       data: { user },
       error,
     } = await supabaseAdmin.auth.getUser(accessToken);
 
-    if (!user || error) {
-      return c.json({ error: "Unauthorized" }, 401);
+    if (error) {
+      console.error(`❌ [PROFILE] JWT verification failed: ${JSON.stringify(error)}`);
+      
+      // Return a clear error message
+      if (error.message.includes("session_missing") || error.message.includes("Auth session missing")) {
+        return c.json({ error: "Session expired or invalid. Please login again." }, 401);
+      }
+      
+      return c.json({ error: `Authentication failed: ${error.message}` }, 401);
     }
+
+    if (!user || !user.email) {
+      console.error("❌ [PROFILE] No user found with token");
+      return c.json({ error: "User not found" }, 401);
+    }
+
+    console.log(`✅ [PROFILE] User authenticated: ${user.email}`);
 
     // Get user from database
     const { data: userData, error: dbError } =
@@ -175,7 +220,13 @@ app.get("/make-server-a52c947c/profile", async (c) => {
         .eq("email", user.email)
         .single();
 
-    if (dbError || !userData) {
+    if (dbError) {
+      console.error(`❌ [PROFILE] Database error: ${JSON.stringify(dbError)}`);
+    }
+
+    if (!userData) {
+      console.warn(`⚠️ [PROFILE] User not found in database for email: ${user.email}`);
+      // Return user data from auth metadata as fallback
       return c.json({
         user: {
           id: user.id,
@@ -186,6 +237,7 @@ app.get("/make-server-a52c947c/profile", async (c) => {
       });
     }
 
+    console.log(`✅ [PROFILE] Successfully fetched profile for: ${userData.email}`);
     return c.json({
       user: {
         id: userData.id,
@@ -195,8 +247,9 @@ app.get("/make-server-a52c947c/profile", async (c) => {
       },
     });
   } catch (error) {
-    console.log(`Error fetching user profile: ${error}`);
-    return c.json({ error: "خطأ في جلب البيانات" }, 500);
+    console.error(`❌ [PROFILE] Unexpected error: ${error.message}`);
+    console.error(`❌ [PROFILE] Error stack: ${error.stack}`);
+    return c.json({ error: `خطأ في جلب البيانات: ${error.message}` }, 500);
   }
 });
 
@@ -657,285 +710,6 @@ app.delete("/make-server-a52c947c/projects/:id", async (c) => {
     return c.json({ error: "خطأ في حذف المشروع" }, 500);
   }
 });
-
-// ============================================
-// 📊 Daily Reports Routes
-// ============================================
-
-// Create Daily Report
-app.post("/make-server-a52c947c/daily-reports", async (c) => {
-  try {
-    const accessToken = c.req
-      .header("Authorization")
-      ?.split(" ")[1];
-    const {
-      data: { user },
-      error,
-    } = await supabaseAdmin.auth.getUser(accessToken);
-
-    if (!user || error) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-
-    const { data: currentUser } = await supabaseAdmin
-      .from("users")
-      .select("id")
-      .eq("email", user.email)
-      .single();
-
-    if (!currentUser) {
-      return c.json({ error: "User not found" }, 404);
-    }
-
-    const reportData = await c.req.json();
-
-    // Validate projectId
-    if (!reportData.projectId) {
-      console.log(
-        "❌ [DAILY REPORT ERROR]: project_id is required",
-      );
-      return c.json({ error: "المشروع مطلوب" }, 400);
-    }
-
-    const { data: report, error: reportError } =
-      await supabaseAdmin
-        .from("daily_reports")
-        .insert([
-          {
-            project_id: reportData.projectId,
-            report_date: reportData.reportDate,
-            weather: reportData.weatherCondition || "مشمس",
-            work_description: reportData.workDescription,
-            workers_count:
-              parseInt(reportData.workersCount) || 0,
-            equipment_used: reportData.equipment || "",
-            notes: reportData.notes || "",
-            created_by: currentUser.id,
-          },
-        ])
-        .select()
-        .single();
-
-    if (reportError) {
-      console.log("❌ [DAILY REPORT ERROR]:", reportError);
-      return c.json({ error: reportError.message }, 400);
-    }
-
-    // Create notification
-    await supabaseAdmin.from("notifications").insert([
-      {
-        title: "تقرير يومي جديد",
-        message: `تم إضافة تقرير يومي جديد: ${reportData.workDescription.substring(0, 50)}...`,
-        type: reportData.issues ? "warning" : "info",
-        user_id: null,
-      },
-    ]);
-
-    return c.json({
-      report,
-      message: "تم إنشاء التقرير اليومي بنجاح",
-    });
-  } catch (error) {
-    console.log(`Error creating daily report: ${error}`);
-    return c.json(
-      { error: "خطأ في إنشاء التقرير اليومي" },
-      500,
-    );
-  }
-});
-
-// Get All Daily Reports
-app.get("/make-server-a52c947c/daily-reports", async (c) => {
-  try {
-    const accessToken = c.req
-      .header("Authorization")
-      ?.split(" ")[1];
-    const {
-      data: { user },
-      error,
-    } = await supabaseAdmin.auth.getUser(accessToken);
-
-    if (!user || error) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-
-    const { data: reports, error: reportsError } =
-      await supabaseAdmin
-        .from("daily_reports")
-        .select(
-          `
-        *,
-        project:project_id (
-          id,
-          work_order_description,
-          project_number
-        ),
-        creator:created_by (
-          id,
-          name
-        )
-      `,
-        )
-        .order("report_date", { ascending: false });
-
-    if (reportsError) {
-      return c.json({ error: reportsError.message }, 500);
-    }
-
-    const reportsFormatted = reports.map((r) => ({
-      id: r.id,
-      projectId: r.project_id || null,
-      projectName:
-        r.project?.work_order_description || "بدون مشروع",
-      reportDate: r.report_date,
-      weatherCondition: r.weather,
-      workDescription: r.work_description,
-      workersCount: r.workers_count,
-      equipment: r.equipment_used,
-      notes: r.notes,
-      createdBy: r.created_by,
-      createdByName: r.creator?.name || "غير معروف",
-      createdAt: r.created_at,
-    }));
-
-    return c.json({ reports: reportsFormatted });
-  } catch (error) {
-    console.log(`Error fetching daily reports: ${error}`);
-    return c.json(
-      { error: "خطأ في جلب التقارير اليومية" },
-      500,
-    );
-  }
-});
-
-// Update Daily Report (General Manager only)
-app.put(
-  "/make-server-a52c947c/daily-reports/:id",
-  async (c) => {
-    try {
-      const accessToken = c.req
-        .header("Authorization")
-        ?.split(" ")[1];
-      const {
-        data: { user },
-        error,
-      } = await supabaseAdmin.auth.getUser(accessToken);
-
-      if (!user || error) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-
-      const { data: currentUser } = await supabaseAdmin
-        .from("users")
-        .select("role")
-        .eq("email", user.email)
-        .single();
-
-      const role = currentUser?.role;
-
-      if (
-        role !== "General Manager" &&
-        role !== "المدير العام"
-      ) {
-        return c.json(
-          {
-            error:
-              "غير مصرح لك بتعديل التقارير - المدير العام فقط",
-          },
-          403,
-        );
-      }
-
-      const reportId = c.req.param("id");
-      const updates = await c.req.json();
-
-      const { data: report, error: updateError } =
-        await supabaseAdmin
-          .from("daily_reports")
-          .update({
-            report_date: updates.reportDate,
-            weather: updates.weatherCondition,
-            work_description: updates.workDescription,
-            workers_count: updates.workersCount,
-            equipment_used: updates.equipment,
-            notes: updates.notes,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", reportId)
-          .select()
-          .single();
-
-      if (updateError) {
-        return c.json({ error: updateError.message }, 400);
-      }
-
-      return c.json({
-        report,
-        message: "تم تحديث التقرير بنجاح",
-      });
-    } catch (error) {
-      console.log(`Error updating daily report: ${error}`);
-      return c.json({ error: "خطأ في تحديث التقرير" }, 500);
-    }
-  },
-);
-
-// Delete Daily Report (General Manager only)
-app.delete(
-  "/make-server-a52c947c/daily-reports/:id",
-  async (c) => {
-    try {
-      const accessToken = c.req
-        .header("Authorization")
-        ?.split(" ")[1];
-      const {
-        data: { user },
-        error,
-      } = await supabaseAdmin.auth.getUser(accessToken);
-
-      if (!user || error) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-
-      const { data: currentUser } = await supabaseAdmin
-        .from("users")
-        .select("role")
-        .eq("email", user.email)
-        .single();
-
-      const role = currentUser?.role;
-
-      if (
-        role !== "General Manager" &&
-        role !== "المدير العام"
-      ) {
-        return c.json(
-          {
-            error:
-              "غير مصرح لك بحذف التقارير - المدير العام فقط",
-          },
-          403,
-        );
-      }
-
-      const reportId = c.req.param("id");
-
-      const { error: deleteError } = await supabaseAdmin
-        .from("daily_reports")
-        .delete()
-        .eq("id", reportId);
-
-      if (deleteError) {
-        return c.json({ error: deleteError.message }, 400);
-      }
-
-      return c.json({ message: "تم حذف التقرير بنجاح" });
-    } catch (error) {
-      console.log(`Error deleting daily report: ${error}`);
-      return c.json({ error: "خطأ في حذف التقرير" }, 500);
-    }
-  },
-);
 
 // ============================================
 // 📈 Performance Contracts Routes
@@ -1459,7 +1233,7 @@ app.post("/make-server-a52c947c/ai/analyze", async (c) => {
       .from("projects")
       .select("*");
     const { data: dailyReports } = await supabaseAdmin
-      .from("daily_reports")
+      .from("daily_reports_new")
       .select("*");
     const { data: performanceContracts } = await supabaseAdmin
       .from("performance_contracts")
@@ -2541,50 +2315,47 @@ app.delete(
         return c.json({ error: "User not found" }, 404);
       }
 
-      // Only general_manager can delete
-      if (currentUser.role !== "general_manager") {
+      // Only General Manager can delete
+      const role = currentUser.role;
+      if (
+        role !== "General Manager" &&
+        role !== "المدير العام" &&
+        role !== "general_manager"
+      ) {
         return c.json(
-          { error: "Unauthorized to delete reports" },
+          { error: "Unauthorized to delete reports - General Manager only" },
           403,
         );
       }
 
       const reportId = c.req.param("id");
 
-      // Get report details for notification
-      const { data: report } = await supabaseAdmin
-        .from("daily_reports_new")
-        .select("report_number")
-        .eq("id", reportId)
-        .single();
+      console.log(`🗑️ [DELETE REPORT] Deleting report ID: ${reportId}`);
 
-      // Delete from database
+      // Delete from database - FIXED: using daily_reports_new (الجدول الصحيح)
       const { error: deleteError } = await supabaseAdmin
         .from("daily_reports_new")
         .delete()
         .eq("id", reportId);
 
       if (deleteError) {
-        console.log(
-          `Error deleting daily report: ${deleteError.message}`,
-        );
-        return c.json(
-          { error: "خطأ في حذف التقرير اليومي" },
-          500,
-        );
+        console.error(`❌ [DELETE REPORT] Error:`, deleteError);
+        return c.json({ error: deleteError.message }, 400);
       }
+
+      console.log(`✅ [DELETE REPORT] Successfully deleted report ${reportId}`);
 
       // Create notification
       await supabaseAdmin.from("notifications").insert([
         {
           title: "حذف تقرير يومي",
-          message: `تم حذف التقرير: ${report?.report_number || reportId}`,
+          message: `تم حذف التقرير: ${reportId}`,
           type: "warning",
           user_id: null,
         },
       ]);
 
-      return c.json({ message: "تم حذف التقرير اليومي بنجاح" });
+      return c.json({ message: "تم حذف التقرير بنجاح" });
     } catch (error) {
       console.log(
         `Error deleting daily report (SQL): ${error}`,
