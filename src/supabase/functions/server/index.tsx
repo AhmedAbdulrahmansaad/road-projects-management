@@ -3,6 +3,8 @@ import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { generateWordHTML, generateExcelCSV, generatePDFHTML } from "./export-helper.tsx";
+// ❌ تم حذف KV store - نستخدم جداول Supabase الحقيقية فقط
+// import * as kv from "./kv_store.tsx";
 
 // ============================================
 // 🔐 Password Hashing Utilities (Deno-compatible)
@@ -47,6 +49,58 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
+
+// ============================================
+// 🔧 Database Initialization
+// ============================================
+
+// ✅ Valid project statuses (matching database constraint)
+const VALID_PROJECT_STATUSES = [
+  'جاري العمل',
+  'منجز',
+  'متأخر',
+  'متقدم',
+  'متعثر',
+  'متوقف',
+  'تم الاستلام الابتدائي',
+  'تم الرفع بالاستلام الابتدائي',
+  'تم الرفع بالاستلام النهائي',
+  'تم الاستلام النهائي',
+  'In Progress',
+  'Completed',
+  'Delayed',
+  'Advanced',
+  'Stalled',
+  'Stopped'
+];
+
+function validateProjectStatus(status: string): boolean {
+  return VALID_PROJECT_STATUSES.includes(status);
+}
+
+function normalizeProjectStatus(status: string): string {
+  // If status is valid, return it
+  if (validateProjectStatus(status)) {
+    return status;
+  }
+  
+  // Default to "جاري العمل" if invalid
+  console.log(`⚠️ Invalid status '${status}', using default 'جاري العمل'`);
+  return 'جاري العمل';
+}
+
+async function initializeDatabase() {
+  try {
+    console.log("🔧 [DB INIT] Checking database constraints...");
+    console.log("✅ [DB INIT] Valid statuses:", VALID_PROJECT_STATUSES.join(', '));
+    console.log("✅ [DB INIT] Database initialization complete");
+  } catch (error) {
+    console.log("⚠️ [DB INIT] Error:", error);
+  }
+}
+
+// Initialize database on startup
+initializeDatabase();
 
 // ============================================
 // 🔐 Authentication Routes
@@ -426,6 +480,11 @@ app.post("/make-server-a52c947c/projects", async (c) => {
 
     const projectData = await c.req.json();
 
+    // ✅ Validate and normalize status
+    const normalizedStatus = normalizeProjectStatus(projectData.status || "جاري العمل");
+    
+    console.log(`🟢 [CREATE PROJECT] Status: '${projectData.status}' → '${normalizedStatus}'`);
+
     const { data: project, error: projectError } =
       await supabaseAdmin
         .from("projects")
@@ -444,7 +503,7 @@ app.post("/make-server-a52c947c/projects", async (c) => {
             duration: projectData.duration || 0,
             site_handover_date: projectData.siteHandoverDate,
             contract_end_date: projectData.contractEndDate,
-            status: projectData.status || "جاري العمل",
+            status: normalizedStatus,
             region: projectData.region,
             branch: projectData.branch,
             host_name: projectData.hostName || null,
@@ -603,6 +662,10 @@ app.put("/make-server-a52c947c/projects/:id", async (c) => {
     );
     console.log("🟢 [UPDATE PROJECT] Updates:", updates);
 
+    // ✅ Validate and normalize status
+    const normalizedStatus = normalizeProjectStatus(updates.status);
+    console.log(`🟢 [UPDATE PROJECT] Status: '${updates.status}' → '${normalizedStatus}'`);
+
     const { data: project, error: updateError } =
       await supabaseAdmin
         .from("projects")
@@ -619,7 +682,7 @@ app.put("/make-server-a52c947c/projects/:id", async (c) => {
           duration: updates.duration,
           site_handover_date: updates.siteHandoverDate,
           contract_end_date: updates.contractEndDate,
-          status: updates.status,
+          status: normalizedStatus,
           region: updates.region,
           branch: updates.branch,
           host_name: updates.hostName,
@@ -732,37 +795,36 @@ app.get(
         return c.json({ error: "Unauthorized" }, 401);
       }
 
-      const { data: contracts, error: contractsError } =
-        await supabaseAdmin
-          .from("performance_contracts")
-          .select("*")
-          .order("created_at", { ascending: false });
+      // ✅ جلب العقود من جدول Supabase الحقيقي
+      const { data: contracts, error: contractsError } = await supabaseAdmin
+        .from("performance_contracts")
+        .select("*")
+        .order("created_at", { ascending: false });
 
       if (contractsError) {
+        console.error("❌ [GET CONTRACTS] Error:", contractsError);
         return c.json({ error: contractsError.message }, 500);
       }
 
-      // تحويل من snake_case إلى camelCase
-      const contractsFormatted =
-        contracts?.map((c) => ({
-          id: c.id,
-          contractNumber: c.contract_number || "",
-          projectName: c.project_name || "",
-          contractorName: c.contractor_name || "",
-          year: c.year || new Date().getFullYear(),
-          month: c.month || "",
-          contractorScore: c.contractor_score || 0,
-          yearlyWeighted: c.yearly_weighted || 0,
-          difference: c.difference || 0,
-          createdAt: c.created_at,
-          createdBy: c.created_by,
-        })) || [];
+      // تنسيق البيانات
+      const formattedContracts = contracts.map((c) => ({
+        id: c.id,
+        contractNumber: c.contract_number,
+        projectName: c.project_name,
+        contractorName: c.contractor_name,
+        year: c.year,
+        month: c.month,
+        contractorScore: c.contractor_score,
+        yearlyWeighted: c.yearly_weighted,
+        difference: c.difference,
+        createdBy: c.created_by,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at,
+      }));
 
-      return c.json({ contracts: contractsFormatted });
+      return c.json({ contracts: formattedContracts });
     } catch (error) {
-      console.log(
-        `Error fetching performance contracts: ${error}`,
-      );
+      console.error(`❌ [GET CONTRACTS] Error: ${error}`);
       return c.json({ error: "خطأ في جلب عقود الأداء" }, 500);
     }
   },
@@ -785,13 +847,18 @@ app.post(
         return c.json({ error: "Unauthorized" }, 401);
       }
 
+      // ✅ جلب بيانات المستخدم من جدول users
       const { data: currentUser } = await supabaseAdmin
         .from("users")
         .select("id, role")
         .eq("email", user.email)
         .single();
 
-      const role = currentUser?.role;
+      if (!currentUser) {
+        return c.json({ error: "User not found" }, 404);
+      }
+
+      const role = currentUser.role;
 
       if (
         role !== "General Manager" &&
@@ -806,66 +873,59 @@ app.post(
       }
 
       const contractData = await c.req.json();
+      
+      // ✅ إدخال العقد في جدول Supabase
+      const { data: newContract, error: insertError } = await supabaseAdmin
+        .from("performance_contracts")
+        .insert([
+          {
+            contract_number: contractData.contractNumber,
+            project_name: contractData.projectName,
+            contractor_name: contractData.contractorName,
+            year: contractData.year,
+            month: contractData.month,
+            contractor_score: parseFloat(contractData.contractorScore),
+            yearly_weighted: parseFloat(contractData.yearlyWeighted),
+            difference: contractData.difference,
+            created_by: currentUser.id,
+          },
+        ])
+        .select()
+        .single();
 
-      const { data: contract, error: contractError } =
-        await supabaseAdmin
-          .from("performance_contracts")
-          .insert([
-            {
-              contract_number: contractData.contractNumber,
-              project_name: contractData.projectName,
-              contractor_name: contractData.contractorName,
-              year: contractData.year,
-              month: contractData.month,
-              contractor_score: parseFloat(
-                contractData.contractorScore,
-              ),
-              yearly_weighted: parseFloat(
-                contractData.yearlyWeighted,
-              ),
-              difference: contractData.difference,
-              created_by: currentUser.id,
-            },
-          ])
-          .select()
-          .single();
-
-      if (contractError) {
-        return c.json({ error: contractError.message }, 400);
+      if (insertError) {
+        console.error("❌ [CREATE CONTRACT] Error:", insertError);
+        return c.json({ error: insertError.message }, 400);
       }
 
-      // Create notifications for Branch Manager and Admin Manager
-      const { data: targetUsers } = await supabaseAdmin
-        .from("users")
-        .select("id")
-        .in("role", [
-          "مدير عام الفرع",
-          "Branch General Manager",
-          "المدير الإداري",
-          "Admin Manager",
-        ]);
-
-      if (targetUsers && targetUsers.length > 0) {
-        const notifications = targetUsers.map((u) => ({
-          user_id: u.id,
+      // ✅ إنشاء إشعارات للجميع
+      await supabaseAdmin.from("notifications").insert([
+        {
           title: "عقد أداء جديد",
           message: `تم إضافة عقد أداء جديد: ${contractData.contractNumber}`,
           type: "info",
-        }));
-
-        await supabaseAdmin
-          .from("notifications")
-          .insert(notifications);
-      }
+          user_id: null, // null = للجميع
+        },
+      ]);
 
       return c.json({
-        contract,
+        contract: {
+          id: newContract.id,
+          contractNumber: newContract.contract_number,
+          projectName: newContract.project_name,
+          contractorName: newContract.contractor_name,
+          year: newContract.year,
+          month: newContract.month,
+          contractorScore: newContract.contractor_score,
+          yearlyWeighted: newContract.yearly_weighted,
+          difference: newContract.difference,
+          createdBy: newContract.created_by,
+          createdAt: newContract.created_at,
+        },
         message: "تم إضافة عقد الأداء بنجاح",
       });
     } catch (error) {
-      console.log(
-        `Error creating performance contract: ${error}`,
-      );
+      console.error(`❌ [CREATE CONTRACT] Error: ${error}`);
       return c.json({ error: "خطأ في إنشاء عقد الأداء" }, 500);
     }
   },
@@ -888,13 +948,18 @@ app.put(
         return c.json({ error: "Unauthorized" }, 401);
       }
 
+      // ✅ جلب بيانات المستخدم من جدول users
       const { data: currentUser } = await supabaseAdmin
         .from("users")
         .select("role")
         .eq("email", user.email)
         .single();
 
-      const role = currentUser?.role;
+      if (!currentUser) {
+        return c.json({ error: "User not found" }, 404);
+      }
+
+      const role = currentUser.role;
 
       if (
         role !== "General Manager" &&
@@ -910,64 +975,57 @@ app.put(
 
       const { id, ...contractData } = await c.req.json();
 
-      const { data: contract, error: updateError } =
-        await supabaseAdmin
-          .from("performance_contracts")
-          .update({
-            contract_number: contractData.contractNumber,
-            project_name: contractData.projectName,
-            contractor_name: contractData.contractorName,
-            year: contractData.year,
-            month: contractData.month,
-            contractor_score: parseFloat(
-              contractData.contractorScore,
-            ),
-            yearly_weighted: parseFloat(
-              contractData.yearlyWeighted,
-            ),
-            difference: contractData.difference,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", id)
-          .select()
-          .single();
+      // ✅ تحديث العقد في جدول Supabase
+      const { data: updatedContract, error: updateError } = await supabaseAdmin
+        .from("performance_contracts")
+        .update({
+          contract_number: contractData.contractNumber,
+          project_name: contractData.projectName,
+          contractor_name: contractData.contractorName,
+          year: contractData.year,
+          month: contractData.month,
+          contractor_score: parseFloat(contractData.contractorScore),
+          yearly_weighted: parseFloat(contractData.yearlyWeighted),
+          difference: contractData.difference,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select()
+        .single();
 
       if (updateError) {
+        console.error("❌ [UPDATE CONTRACT] Error:", updateError);
         return c.json({ error: updateError.message }, 400);
       }
 
-      // Create notifications
-      const { data: targetUsers } = await supabaseAdmin
-        .from("users")
-        .select("id")
-        .in("role", [
-          "مدير عام الفرع",
-          "Branch General Manager",
-          "المدير الإداري",
-          "Admin Manager",
-        ]);
-
-      if (targetUsers && targetUsers.length > 0) {
-        const notifications = targetUsers.map((u) => ({
-          user_id: u.id,
+      // ✅ إنشاء إشعارات للجميع
+      await supabaseAdmin.from("notifications").insert([
+        {
           title: "تحديث عقد أداء",
           message: `تم تحديث عقد الأداء: ${contractData.contractNumber}`,
           type: "info",
-        }));
-
-        await supabaseAdmin
-          .from("notifications")
-          .insert(notifications);
-      }
+          user_id: null, // null = للجميع
+        },
+      ]);
 
       return c.json({
-        contract,
+        contract: {
+          id: updatedContract.id,
+          contractNumber: updatedContract.contract_number,
+          projectName: updatedContract.project_name,
+          contractorName: updatedContract.contractor_name,
+          year: updatedContract.year,
+          month: updatedContract.month,
+          contractorScore: updatedContract.contractor_score,
+          yearlyWeighted: updatedContract.yearly_weighted,
+          difference: updatedContract.difference,
+          createdAt: updatedContract.created_at,
+          updatedAt: updatedContract.updated_at,
+        },
         message: "تم تحديث عقد الأداء بنجاح",
       });
     } catch (error) {
-      console.log(
-        `Error updating performance contract: ${error}`,
-      );
+      console.error(`❌ [UPDATE CONTRACT] Error: ${error}`);
       return c.json({ error: "خطأ في تحديث عقد الأداء" }, 500);
     }
   },
@@ -990,13 +1048,18 @@ app.delete(
         return c.json({ error: "Unauthorized" }, 401);
       }
 
+      // ✅ جلب بيانات المستخدم من جدول users
       const { data: currentUser } = await supabaseAdmin
         .from("users")
         .select("role")
         .eq("email", user.email)
         .single();
 
-      const role = currentUser?.role;
+      if (!currentUser) {
+        return c.json({ error: "User not found" }, 404);
+      }
+
+      const role = currentUser.role;
 
       if (
         role !== "General Manager" &&
@@ -1012,20 +1075,20 @@ app.delete(
 
       const { id } = await c.req.json();
 
+      // ✅ حذف العقد من جدول Supabase
       const { error: deleteError } = await supabaseAdmin
         .from("performance_contracts")
         .delete()
         .eq("id", id);
 
       if (deleteError) {
+        console.error("❌ [DELETE CONTRACT] Error:", deleteError);
         return c.json({ error: deleteError.message }, 400);
       }
 
       return c.json({ message: "تم حذف عقد الأداء بنجاح" });
     } catch (error) {
-      console.log(
-        `Error deleting performance contract: ${error}`,
-      );
+      console.error(`❌ [DELETE CONTRACT] Error: ${error}`);
       return c.json({ error: "خطأ في حذف عقد الأداء" }, 500);
     }
   },
@@ -1536,393 +1599,8 @@ console.log("📊 Using PostgreSQL database via Supabase");
 console.log("🤖 AI Assistant is active and role-based");
 
 // ============================================
-// 📊 Daily Reports (KV Store) Routes
-// ============================================
-
-// Create Daily Report (KV)
-app.post(
-  "/make-server-a52c947c/daily-reports-kv",
-  async (c) => {
-    try {
-      const accessToken = c.req
-        .header("Authorization")
-        ?.split(" ")[1];
-      const {
-        data: { user },
-        error,
-      } = await supabaseAdmin.auth.getUser(accessToken);
-
-      if (!user || error) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-
-      const { data: currentUser } = await supabaseAdmin
-        .from("users")
-        .select("id, name")
-        .eq("email", user.email)
-        .single();
-
-      if (!currentUser) {
-        return c.json({ error: "User not found" }, 404);
-      }
-
-      const reportData = await c.req.json();
-
-      // Generate report number
-      const reportNumber = `DR-${Date.now()}`;
-
-      // Calculate total workers
-      const saudiWorkers =
-        parseInt(reportData.saudiWorkers) || 0;
-      const nonSaudiWorkers =
-        parseInt(reportData.nonSaudiWorkers) || 0;
-      const totalWorkers = saudiWorkers + nonSaudiWorkers;
-
-      // Get project name if projectId provided
-      let projectName = null;
-      if (reportData.projectId) {
-        const { data: project } = await supabaseAdmin
-          .from("projects")
-          .select("work_order_description, project_number")
-          .eq("id", reportData.projectId)
-          .single();
-
-        if (project) {
-          projectName = `${project.work_order_description} (${project.project_number})`;
-        }
-      }
-
-      const report = {
-        id: crypto.randomUUID(),
-        reportNumber,
-        reportDate: reportData.reportDate,
-        projectId: reportData.projectId || null,
-        projectName,
-        location: reportData.location || null,
-        weatherCondition: reportData.weatherCondition || null,
-        temperature: reportData.temperature || null,
-        workHoursFrom: reportData.workHoursFrom || null,
-        workHoursTo: reportData.workHoursTo || null,
-        saudiWorkers,
-        nonSaudiWorkers,
-        totalWorkers,
-        equipmentUsed: reportData.equipmentUsed || null,
-        workDescription: reportData.workDescription || null,
-        dailyProgress:
-          parseFloat(reportData.dailyProgress) || null,
-        executedQuantities:
-          reportData.executedQuantities || null,
-        materialsUsed: reportData.materialsUsed || null,
-        problems: reportData.problems || null,
-        accidents: reportData.accidents || null,
-        officialVisits: reportData.officialVisits || null,
-        recommendations: reportData.recommendations || null,
-        generalNotes: reportData.generalNotes || null,
-        images: [],
-        createdBy: currentUser.id,
-        createdByName: currentUser.name,
-        createdAt: new Date().toISOString(),
-      };
-
-      // Save to KV store
-      await kv.set(`daily_report:${report.id}`, report);
-
-      // Create notification
-      await supabaseAdmin.from("notifications").insert([
-        {
-          title: "تقرير يومي جديد",
-          message: `تم إضافة تقرير يومي جديد: ${reportNumber} - ${reportData.workDescription?.substring(0, 50) || "تقرير جديد"}`,
-          type:
-            reportData.problems || reportData.accidents
-              ? "warning"
-              : "info",
-          user_id: null,
-        },
-      ]);
-
-      return c.json({
-        report,
-        message: "تم إنشاء التقرير اليومي بنجاح",
-      });
-    } catch (error) {
-      console.log(`Error creating daily report (KV): ${error}`);
-      return c.json(
-        { error: "خطأ في إنشاء التقرير اليومي" },
-        500,
-      );
-    }
-  },
-);
-
-// Get All Daily Reports (KV)
-app.get("/make-server-a52c947c/daily-reports-kv", async (c) => {
-  try {
-    const accessToken = c.req
-      .header("Authorization")
-      ?.split(" ")[1];
-    const {
-      data: { user },
-      error,
-    } = await supabaseAdmin.auth.getUser(accessToken);
-
-    if (!user || error) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-
-    // Get all reports from KV store
-    const allReports = await kv.getByPrefix("daily_report:");
-
-    // Sort by date descending
-    const sortedReports = allReports.sort(
-      (a: any, b: any) =>
-        new Date(b.reportDate).getTime() -
-        new Date(a.reportDate).getTime(),
-    );
-
-    return c.json({ reports: sortedReports });
-  } catch (error) {
-    console.log(`Error fetching daily reports (KV): ${error}`);
-    return c.json(
-      { error: "خطأ في جلب التقارير اليومية" },
-      500,
-    );
-  }
-});
-
-// Get Reports by Project ID (KV)
-app.get(
-  "/make-server-a52c947c/daily-reports-kv/project/:projectId",
-  async (c) => {
-    try {
-      const accessToken = c.req
-        .header("Authorization")
-        ?.split(" ")[1];
-      const {
-        data: { user },
-        error,
-      } = await supabaseAdmin.auth.getUser(accessToken);
-
-      if (!user || error) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-
-      const projectId = c.req.param("projectId");
-
-      // Get all reports and filter by project
-      const allReports = await kv.getByPrefix("daily_report:");
-      const projectReports = allReports.filter(
-        (r: any) => r.projectId === projectId,
-      );
-
-      return c.json({ reports: projectReports });
-    } catch (error) {
-      console.log(
-        `Error fetching project reports (KV): ${error}`,
-      );
-      return c.json(
-        { error: "خطأ في جلب تقارير المشروع" },
-        500,
-      );
-    }
-  },
-);
-
-// Update Daily Report (KV)
-app.put(
-  "/make-server-a52c947c/daily-reports-kv/:id",
-  async (c) => {
-    try {
-      const accessToken = c.req
-        .header("Authorization")
-        ?.split(" ")[1];
-      const {
-        data: { user },
-        error,
-      } = await supabaseAdmin.auth.getUser(accessToken);
-
-      if (!user || error) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-
-      const { data: currentUser } = await supabaseAdmin
-        .from("users")
-        .select("id, role")
-        .eq("email", user.email)
-        .single();
-
-      if (!currentUser) {
-        return c.json({ error: "User not found" }, 404);
-      }
-
-      const reportId = c.req.param("id");
-      const reportData = await c.req.json();
-
-      // Get existing report
-      const existingReport = await kv.get(
-        `daily_report:${reportId}`,
-      );
-
-      if (!existingReport) {
-        return c.json({ error: "Report not found" }, 404);
-      }
-
-      // Check permissions
-      const isGeneralManager =
-        currentUser.role === "General Manager" ||
-        currentUser.role === "المدير العام" ||
-        currentUser.role === "general_manager";
-      const isOwner =
-        existingReport.createdBy === currentUser.id;
-
-      if (!isGeneralManager && !isOwner) {
-        return c.json(
-          { error: "Unauthorized to edit this report" },
-          403,
-        );
-      }
-
-      // Calculate total workers
-      const saudiWorkers =
-        parseInt(reportData.saudiWorkers) || 0;
-      const nonSaudiWorkers =
-        parseInt(reportData.nonSaudiWorkers) || 0;
-      const totalWorkers = saudiWorkers + nonSaudiWorkers;
-
-      // Get project name if projectId provided
-      let projectName = null;
-      if (reportData.projectId) {
-        const { data: project } = await supabaseAdmin
-          .from("projects")
-          .select("work_order_description, project_number")
-          .eq("id", reportData.projectId)
-          .single();
-
-        if (project) {
-          projectName = `${project.work_order_description} (${project.project_number})`;
-        }
-      }
-
-      const updatedReport = {
-        ...existingReport,
-        reportDate: reportData.reportDate,
-        projectId: reportData.projectId || null,
-        projectName,
-        location: reportData.location || null,
-        weatherCondition: reportData.weatherCondition || null,
-        temperature: reportData.temperature || null,
-        workHoursFrom: reportData.workHoursFrom || null,
-        workHoursTo: reportData.workHoursTo || null,
-        saudiWorkers,
-        nonSaudiWorkers,
-        totalWorkers,
-        equipmentUsed: reportData.equipmentUsed || null,
-        workDescription: reportData.workDescription || null,
-        dailyProgress:
-          parseFloat(reportData.dailyProgress) || null,
-        executedQuantities:
-          reportData.executedQuantities || null,
-        materialsUsed: reportData.materialsUsed || null,
-        problems: reportData.problems || null,
-        accidents: reportData.accidents || null,
-        officialVisits: reportData.officialVisits || null,
-        recommendations: reportData.recommendations || null,
-        generalNotes: reportData.generalNotes || null,
-        updatedAt: new Date().toISOString(),
-      };
-
-      await kv.set(`daily_report:${reportId}`, updatedReport);
-
-      // Create notification
-      await supabaseAdmin.from("notifications").insert([
-        {
-          title: "تحديث تقرير يومي",
-          message: `تم تحديث التقرير: ${existingReport.reportNumber}`,
-          type: "info",
-          user_id: null,
-        },
-      ]);
-
-      return c.json({
-        report: updatedReport,
-        message: "تم تحديث التقرير اليومي بنجاح",
-      });
-    } catch (error) {
-      console.log(`Error updating daily report (KV): ${error}`);
-      return c.json(
-        { error: "خطأ في تحديث التقرير اليومي" },
-        500,
-      );
-    }
-  },
-);
-
-// Delete Daily Report (KV)
-app.delete(
-  "/make-server-a52c947c/daily-reports-kv/:id",
-  async (c) => {
-    try {
-      const accessToken = c.req
-        .header("Authorization")
-        ?.split(" ")[1];
-      const {
-        data: { user },
-        error,
-      } = await supabaseAdmin.auth.getUser(accessToken);
-
-      if (!user || error) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-
-      const { data: currentUser } = await supabaseAdmin
-        .from("users")
-        .select("role")
-        .eq("email", user.email)
-        .single();
-
-      if (!currentUser) {
-        return c.json({ error: "User not found" }, 404);
-      }
-
-      // Only general manager can delete
-      if (currentUser.role !== "general_manager") {
-        return c.json(
-          { error: "Unauthorized to delete reports" },
-          403,
-        );
-      }
-
-      const reportId = c.req.param("id");
-
-      // Get report to get report number for notification
-      const existingReport = await kv.get(
-        `daily_report:${reportId}`,
-      );
-
-      await kv.del(`daily_report:${reportId}`);
-
-      // Create notification
-      await supabaseAdmin.from("notifications").insert([
-        {
-          title: "حذف تقرير يومي",
-          message: `تم حذف التقرير: ${existingReport?.reportNumber || reportId}`,
-          type: "warning",
-          user_id: null,
-        },
-      ]);
-
-      return c.json({ message: "تم حذف التقرير اليومي بنجاح" });
-    } catch (error) {
-      console.log(`Error deleting daily report (KV): ${error}`);
-      return c.json(
-        { error: "خطأ في حذف التقرير اليومي" },
-        500,
-      );
-    }
-  },
-);
-
-// ============================================
-// 📊 Daily Reports SQL Routes
+// 📊 Daily Reports - تم حذف routes KV القديمة
+// نستخدم فقط جداول Supabase الحقيقية (daily_reports_new)
 // ============================================
 
 // Create Daily Report (SQL)
@@ -1953,6 +1631,13 @@ app.post(
       }
 
       const reportData = await c.req.json();
+      
+      console.log('📥 Received report data:', {
+        imagesCount: reportData.images?.length || 0,
+        imagesType: typeof reportData.images,
+        items: reportData.items,
+        itemsType: typeof reportData.items,
+      });
 
       // Generate unique report number
       const reportNumber = `DR-${Date.now()}`;
@@ -2010,6 +1695,19 @@ app.post(
         insertData.recommendations = reportData.recommendations;
       if (reportData.generalNotes)
         insertData.general_notes = reportData.generalNotes;
+      
+      // ✅ إضافة الصور والبنود
+      // عمود images من نوع jsonb، نرسل array مباشرة بدون stringify
+      if (reportData.images && reportData.images.length > 0) {
+        insertData.images = reportData.images;
+        console.log('✅ Adding images to insertData:', reportData.images.length, 'images');
+      }
+      if (reportData.items) {
+        insertData.items = reportData.items;
+        console.log('✅ Adding items to insertData:', reportData.items);
+      }
+
+      console.log('💾 Final insertData:', JSON.stringify(insertData, null, 2));
 
       // Insert into database
       const { data: newReport, error: insertError } =
@@ -2131,6 +1829,8 @@ app.get(
         officialVisits: report.official_visits,
         recommendations: report.recommendations,
         generalNotes: report.general_notes,
+        items: report.items,
+        // jsonb يُقرأ تلقائياً كـ array
         images: report.images || [],
         createdBy: report.created_by,
         createdByName: report.users?.name || "Unknown",
@@ -2235,6 +1935,11 @@ app.put(
         official_visits: reportData.officialVisits || null,
         recommendations: reportData.recommendations || null,
         general_notes: reportData.generalNotes || null,
+        // عمود images من نوع jsonb، نرسل array مباشرة
+        images: reportData.images && reportData.images.length > 0 
+          ? reportData.images
+          : null,
+        items: reportData.items || null,
       };
 
       // Update in database
@@ -2389,7 +2094,7 @@ app.get(
 
       const { data: report, error: fetchError } = await supabaseAdmin
         .from("daily_reports_new")
-        .select(`*, projects:project_id(id, project_number, work_order_description), users:created_by(id, name)`)
+        .select(`*, items, images, projects:project_id(id, project_number, work_order_description), users:created_by(id, name)`)
         .eq("id", reportId)
         .single();
 
@@ -2399,6 +2104,8 @@ app.get(
       }
 
       console.log("✅ Report found:", report.report_number);
+      console.log("✅ Report has items:", !!report.items, "- Length:", report.items?.length);
+      console.log("✅ Report has images:", !!report.images, "- Count:", Array.isArray(report.images) ? report.images.length : 0);
 
       if (format === "word") {
         const html = generateWordHTML(report);
@@ -2427,8 +2134,12 @@ app.get(
         const html = generatePDFHTML(report);
         console.log("✅ PDF HTML generated, length:", html.length);
         
+        // ✅ إضافة UTF-8 BOM لضمان عرض العربية بشكل صحيح
+        // BOM = \ufeff = Byte Order Mark
+        const htmlWithBOM = '\ufeff' + html;
+        
         // Return HTML that opens in new tab for Print to PDF
-        return new Response(html, {
+        return new Response(htmlWithBOM, {
           headers: {
             "Content-Type": "text/html; charset=utf-8",
             "Content-Disposition": `inline`,

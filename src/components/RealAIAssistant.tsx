@@ -125,9 +125,13 @@ export const RealAIAssistant: React.FC = () => {
       };
     }
     
-    // Statistics intent
-    if (lower.includes('إحصائيات') || lower.includes('تقرير') || 
-        lower.includes('statistics') || lower.includes('report')) {
+    // Statistics intent - أكثر شمولاً
+    if (lower.includes('إحصائيات') || lower.includes('إحصائية') || 
+        lower.includes('تقرير') || lower.includes('عرض') || 
+        lower.includes('اعرض') || lower.includes('statistics') || 
+        lower.includes('report') || lower.includes('show') ||
+        lower.includes('أرقام') || lower.includes('بيانات') ||
+        lower.includes('معلومات عن') || lower.includes('stats')) {
       return { intent: 'statistics', entities: {} };
     }
     
@@ -237,21 +241,53 @@ export const RealAIAssistant: React.FC = () => {
       });
 
       if (response.ok) {
-        const projects = await response.json();
+        const data = await response.json();
+        const projects = data.projects || [];
         const total = projects.length;
-        const active = projects.filter((p: any) => p.status === 'نشط' || p.status === 'جاري').length;
-        const completed = projects.filter((p: any) => p.status === 'مكتمل' || p.status === 'منجز').length;
+        
+        // حساب المشاريع النشطة - كل الحالات ما عدا "متوقف"
+        const active = projects.filter((p: any) => 
+          p.status !== 'متوقف' && p.status !== 'Stopped' &&
+          p.status !== 'تم الاستلام النهائي' && p.status !== 'منجز'
+        ).length;
+        
+        const completed = projects.filter((p: any) => 
+          p.status === 'تم الاستلام النهائي' || p.status === 'منجز'
+        ).length;
+        
+        const delayed = projects.filter((p: any) => 
+          p.status === 'متأخر' || p.status === 'متعثر'
+        ).length;
+        
         const avgProgress = total > 0 
-          ? (projects.reduce((sum: number, p: any) => sum + (p.progress || 0), 0) / total).toFixed(1)
+          ? Math.round(projects.reduce((sum: number, p: any) => sum + (p.progressActual || 0), 0) / total)
           : 0;
 
-        return `📊 **إحصائيات المشاريع:**\n\n📁 إجمالي المشاريع: **${total}**\n✅ المشاريع النشطة: **${active}**\n🎯 المشاريع المكتملة: **${completed}**\n📈 متوسط الإنجاز: **${avgProgress}%**\n\nالنظام يعمل بكفاءة عالية! 🚀`;
+        const totalBudget = projects.reduce((sum: number, p: any) => 
+          sum + (parseFloat(p.projectValue) || 0), 0
+        );
+
+        return `📊 **إحصائيات المشاريع الحقيقية:**
+
+📁 إجمالي المشاريع: **${total}** مشروع
+✅ المشاريع النشطة: **${active}** مشروع
+🎯 المشاريع المكتملة: **${completed}** مشروع
+⚠️ المشاريع المتأخرة: **${delayed}** مشروع
+📈 متوسط الإنجاز: **${avgProgress}%**
+💰 إجمالي الميزانية: **${totalBudget.toLocaleString('ar-SA')} ريال**
+
+${active > 0 ? '✨ لديك مشاريع نشطة تحتاج متابعة!' : ''}
+${delayed > 0 ? '🔴 تنبيه: لديك مشاريع متأخرة!' : ''}
+${completed === total && total > 0 ? '🎉 ممتاز! جميع المشاريع مكتملة!' : ''}
+
+النظام يعمل بكفاءة عالية! 🚀🇸🇦`;
+      } else {
+        return '❌ عذراً، لا أستطيع جلب الإحصائيات الآن. تأكد من اتصالك بالإنترنت.';
       }
     } catch (error) {
-      return '❌ عذراً، لا أستطيع جلب الإحصائيات الآن.';
+      console.error('Error fetching statistics:', error);
+      return '❌ عذراً، حدث خطأ في جلب الإحصائيات. حاول مرة أخرى.';
     }
-    
-    return 'جاري تحميل الإحصائيات...';
   };
 
   const handleGeneralQuery = async (query: string): Promise<string> => {

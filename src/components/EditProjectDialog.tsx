@@ -122,6 +122,16 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ project, o
 
       if (!response.ok) {
         const errorData = await response.json();
+        
+        // ✅ إذا كان الخطأ constraint violation، أعطي رسالة واضحة
+        if (errorData.error && errorData.error.includes('projects_status_check')) {
+          toast.error(
+            '❌ خطأ في حالة المشروع! يرجى تحديث قاعدة البيانات. راجع ملف FIX_DATABASE_CONSTRAINT.md',
+            { duration: 8000 }
+          );
+          console.error('🔧 Database constraint error. See FIX_DATABASE_CONSTRAINT.md or run SQL in Supabase');
+        }
+        
         throw new Error(errorData.error || 'فشل تحديث المشروع');
       }
 
@@ -159,23 +169,21 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ project, o
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="workOrderNumber">رقم أمر العمل *</Label>
+                <Label htmlFor="workOrderNumber">رقم أمر العمل</Label>
                 <Input
                   id="workOrderNumber"
                   value={formData.workOrderNumber}
                   onChange={(e) => handleChange('workOrderNumber', e.target.value)}
-                  required
                   placeholder="مثال: 2024/123"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="contractNumber">رقم العقد *</Label>
+                <Label htmlFor="contractNumber">رقم العقد</Label>
                 <Input
                   id="contractNumber"
                   value={formData.contractNumber}
                   onChange={(e) => handleChange('contractNumber', e.target.value)}
-                  required
                   placeholder="مثال: 2024-CT-456"
                 />
               </div>
@@ -287,7 +295,9 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({ project, o
                     <SelectItem value="متقدم">متقدم</SelectItem>
                     <SelectItem value="متعثر">متعثر</SelectItem>
                     <SelectItem value="متوقف">متوقف</SelectItem>
+                    <SelectItem value="تم الاستلام الابتدائي">تم الاستلام الابتدائي</SelectItem>
                     <SelectItem value="تم الرفع بالاستلام الابتدائي">تم الرفع بالاستلام الابتدائي</SelectItem>
+                    <SelectItem value="تم الرفع بالاستلام النهائي">تم الرفع بالاستلام النهائي</SelectItem>
                     <SelectItem value="تم الاستلام النهائي">تم الاستلام النهائي</SelectItem>
                   </SelectContent>
                 </Select>

@@ -39,6 +39,7 @@ export const PerformanceContractsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingContract, setEditingContract] = useState<PerformanceContract | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [formData, setFormData] = useState({
     contractNumber: '',
@@ -56,10 +57,15 @@ export const PerformanceContractsPage: React.FC = () => {
     role === 'المدير العام' || role === 'General Manager' ||
     role === 'مدير عام الفرع' || role === 'Branch General Manager' ||
     role === 'المدير الإداري' || role === 'Admin Manager';
+  
+  // صلاحية التصدير: المدير العام ومدير عام الفرع
+  const canExport = 
+    role === 'المدير العام' || role === 'General Manager' ||
+    role === 'مدير عام الفرع' || role === 'Branch General Manager';
 
   // Debug log
   console.log('🔍 PerformanceContracts - User Role:', role);
-  console.log('✅ canView:', canView, '| canEdit:', canEdit);
+  console.log('✅ canView:', canView, '| canEdit:', canEdit, '| canExport:', canExport);
 
   useEffect(() => {
     if (canView) {
@@ -542,6 +548,19 @@ export const PerformanceContractsPage: React.FC = () => {
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
+  // تصفية العقود حسب البحث
+  const filteredContracts = contracts.filter(contract => {
+    if (!searchQuery.trim()) return true;
+    
+    const query = searchQuery.toLowerCase();
+    return (
+      contract.contractNumber?.toLowerCase().includes(query) ||
+      contract.projectName?.toLowerCase().includes(query) ||
+      contract.year?.toString().includes(query) ||
+      contract.contractorName?.toLowerCase().includes(query)
+    );
+  });
+
   if (!canView) {
     return (
       <Card>
@@ -576,177 +595,198 @@ export const PerformanceContractsPage: React.FC = () => {
           </CardTitle>
           <div className="flex gap-2">
             {canEdit && (
-              <>
-                <Dialog open={isDialogOpen} onOpenChange={(open) => {
-                  setIsDialogOpen(open);
-                  if (!open) resetForm();
-                }}>
-                  <DialogTrigger asChild>
-                    <Button className="bg-gradient-to-r from-primary to-primary/80">
-                      <Plus className="ml-2 h-4 w-4" />
-                      {language === 'ar' ? 'إضافة عقد جديد' : 'Add New Contract'}
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-                    <DialogHeader>
-                      <DialogTitle>
-                        {editingContract 
-                          ? (language === 'ar' ? 'تعديل عقد' : 'Edit Contract')
-                          : (language === 'ar' ? 'إضافة عقد جديد' : 'Add New Contract')}
-                      </DialogTitle>
-                      <DialogDescription>
-                        {editingContract 
-                          ? (language === 'ar' ? 'تعديل عقد الأداء الحالي' : 'Edit the current performance contract')
-                          : (language === 'ar' ? 'إضافة عقد أداء جديد' : 'Add a new performance contract')}
-                      </DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label>{language === 'ar' ? 'رقم العقد' : 'Contract Number'}</Label>
-                          <Input
-                            value={formData.contractNumber}
-                            onChange={(e) => setFormData({ ...formData, contractNumber: e.target.value })}
-                            required
-                            placeholder={language === 'ar' ? 'أدخل رقم العقد' : 'Enter contract number'}
-                          />
-                        </div>
-                        <div>
-                          <Label>{language === 'ar' ? 'السنة' : 'Year'}</Label>
-                          <Input
-                            type="number"
-                            value={formData.year}
-                            onChange={(e) => setFormData({ ...formData, year: parseInt(e.target.value) })}
-                            required
-                          />
-                        </div>
-                      </div>
-
+              <Dialog open={isDialogOpen} onOpenChange={(open) => {
+                setIsDialogOpen(open);
+                if (!open) resetForm();
+              }}>
+                <DialogTrigger asChild>
+                  <Button className="bg-gradient-to-r from-primary to-primary/80">
+                    <Plus className="ml-2 h-4 w-4" />
+                    {language === 'ar' ? 'إضافة عقد جديد' : 'Add New Contract'}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+                  <DialogHeader>
+                    <DialogTitle>
+                      {editingContract 
+                        ? (language === 'ar' ? 'تعديل عقد' : 'Edit Contract')
+                        : (language === 'ar' ? 'إضافة عقد جديد' : 'Add New Contract')}
+                    </DialogTitle>
+                    <DialogDescription>
+                      {editingContract 
+                        ? (language === 'ar' ? 'تعديل عقد الأداء الحالي' : 'Edit the current performance contract')
+                        : (language === 'ar' ? 'إضافة عقد أداء جديد' : 'Add a new performance contract')}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label>{language === 'ar' ? 'اسم مشروع عقد الصيانة' : 'Maintenance Contract Project Name'}</Label>
+                        <Label>{language === 'ar' ? 'رقم العقد' : 'Contract Number'}</Label>
                         <Input
-                          value={formData.projectName}
-                          onChange={(e) => setFormData({ ...formData, projectName: e.target.value })}
+                          value={formData.contractNumber}
+                          onChange={(e) => setFormData({ ...formData, contractNumber: e.target.value })}
                           required
-                          placeholder={language === 'ar' ? 'أدخل اسم المشروع' : 'Enter project name'}
+                          placeholder={language === 'ar' ? 'أدخل رقم العقد' : 'Enter contract number'}
                         />
                       </div>
-
                       <div>
-                        <Label>{language === 'ar' ? 'اسم المقاول' : 'Contractor Name'}</Label>
+                        <Label>{language === 'ar' ? 'السنة' : 'Year'}</Label>
                         <Input
-                          value={formData.contractorName}
-                          onChange={(e) => setFormData({ ...formData, contractorName: e.target.value })}
+                          type="number"
+                          value={formData.year}
+                          onChange={(e) => setFormData({ ...formData, year: parseInt(e.target.value) })}
                           required
-                          placeholder={language === 'ar' ? 'أدخل اسم المقاول' : 'Enter contractor name'}
                         />
                       </div>
+                    </div>
 
+                    <div>
+                      <Label>{language === 'ar' ? 'اسم مشروع عقد الصيانة' : 'Maintenance Contract Project Name'}</Label>
+                      <Input
+                        value={formData.projectName}
+                        onChange={(e) => setFormData({ ...formData, projectName: e.target.value })}
+                        required
+                        placeholder={language === 'ar' ? 'أدخل اسم المشروع' : 'Enter project name'}
+                      />
+                    </div>
+
+                    <div>
+                      <Label>{language === 'ar' ? 'اسم المقاول' : 'Contractor Name'}</Label>
+                      <Input
+                        value={formData.contractorName}
+                        onChange={(e) => setFormData({ ...formData, contractorName: e.target.value })}
+                        required
+                        placeholder={language === 'ar' ? 'أدخل اسم المقاول' : 'Enter contractor name'}
+                      />
+                    </div>
+
+                    <div>
+                      <Label>{language === 'ar' ? 'الشهر' : 'Month'}</Label>
+                      <Select
+                        value={formData.month}
+                        onValueChange={(value) => setFormData({ ...formData, month: value })}
+                        required
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={language === 'ar' ? 'اختر الشهر' : 'Select month'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(language === 'ar' ? months : monthsEn).map((month) => (
+                            <SelectItem key={month} value={month}>{month}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label>{language === 'ar' ? 'الشهر' : 'Month'}</Label>
-                        <Select
-                          value={formData.month}
-                          onValueChange={(value) => setFormData({ ...formData, month: value })}
+                        <Label>{language === 'ar' ? 'درجة أداء المقاول' : 'Contractor Score'}</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={formData.contractorScore}
+                          onChange={(e) => setFormData({ ...formData, contractorScore: e.target.value })}
                           required
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={language === 'ar' ? 'اختر الشهر' : 'Select month'} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(language === 'ar' ? months : monthsEn).map((month) => (
-                              <SelectItem key={month} value={month}>{month}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          placeholder="0.00"
+                        />
                       </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label>{language === 'ar' ? 'درجة أداء المقاول' : 'Contractor Score'}</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={formData.contractorScore}
-                            onChange={(e) => setFormData({ ...formData, contractorScore: e.target.value })}
-                            required
-                            placeholder="0.00"
-                          />
-                        </div>
-                        <div>
-                          <Label>{language === 'ar' ? 'المرجح للعام' : 'Yearly Weighted'}</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={formData.yearlyWeighted}
-                            onChange={(e) => setFormData({ ...formData, yearlyWeighted: e.target.value })}
-                            required
-                            placeholder="0.00"
-                          />
-                        </div>
+                      <div>
+                        <Label>{language === 'ar' ? 'المرجح للعام' : 'Yearly Weighted'}</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={formData.yearlyWeighted}
+                          onChange={(e) => setFormData({ ...formData, yearlyWeighted: e.target.value })}
+                          required
+                          placeholder="0.00"
+                        />
                       </div>
+                    </div>
 
-                      <div className="bg-muted p-4 rounded-lg">
-                        <div className="text-sm text-muted-foreground mb-2">
-                          {language === 'ar' ? 'الفرق (تلقائي):' : 'Difference (auto):'}
-                        </div>
-                        <div className="text-2xl font-bold">
-                          {((parseFloat(formData.contractorScore) || 0) - (parseFloat(formData.yearlyWeighted) || 0)).toFixed(2)}
-                        </div>
+                    <div className="bg-muted p-4 rounded-lg">
+                      <div className="text-sm text-muted-foreground mb-2">
+                        {language === 'ar' ? 'الفرق (تلقائي):' : 'Difference (auto):'}
                       </div>
-
-                      <div className="flex gap-2 pt-4">
-                        <Button type="submit" className="flex-1">
-                          {editingContract 
-                            ? (language === 'ar' ? 'تحديث' : 'Update')
-                            : (language === 'ar' ? 'إضافة' : 'Add')}
-                        </Button>
-                        <Button 
-                          type="button" 
-                          variant="outline" 
-                          onClick={() => {
-                            setIsDialogOpen(false);
-                            resetForm();
-                          }}
-                        >
-                          {language === 'ar' ? 'إلغاء' : 'Cancel'}
-                        </Button>
+                      <div className="text-2xl font-bold">
+                        {((parseFloat(formData.contractorScore) || 0) - (parseFloat(formData.yearlyWeighted) || 0)).toFixed(2)}
                       </div>
-                    </form>
-                  </DialogContent>
-                </Dialog>
+                    </div>
 
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="bg-gradient-to-r from-green-600 to-green-500 text-white hover:from-green-700 hover:to-green-600">
-                      <Download className="ml-2 h-4 w-4" />
-                      {language === 'ar' ? 'تصدير' : 'Export'}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-                    <DropdownMenuItem onClick={exportToExcel} className="cursor-pointer">
-                      <FileText className="ml-2 h-4 w-4 text-green-600" />
-                      <span>{language === 'ar' ? 'تصدير Excel' : 'Export Excel'}</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={exportToPDF} className="cursor-pointer">
-                      <FileText className="ml-2 h-4 w-4 text-red-600" />
-                      <span>{language === 'ar' ? 'تصدير PDF' : 'Export PDF'}</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={exportToWord} className="cursor-pointer">
-                      <FileText className="ml-2 h-4 w-4 text-blue-600" />
-                      <span>{language === 'ar' ? 'تصدير Word' : 'Export Word'}</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
+                    <div className="flex gap-2 pt-4">
+                      <Button type="submit" className="flex-1">
+                        {editingContract 
+                          ? (language === 'ar' ? 'تحديث' : 'Update')
+                          : (language === 'ar' ? 'إضافة' : 'Add')}
+                      </Button>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        onClick={() => {
+                          setIsDialogOpen(false);
+                          resetForm();
+                        }}
+                      >
+                        {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                      </Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            )}
+            
+            {/* أزرار التصدير - متاحة للمدير العام ومدير عام الفرع */}
+            {canExport && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="bg-gradient-to-r from-green-600 to-green-500 text-white hover:from-green-700 hover:to-green-600">
+                    <Download className="ml-2 h-4 w-4" />
+                    {language === 'ar' ? 'تصدير' : 'Export'}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+                  <DropdownMenuItem onClick={exportToExcel} className="cursor-pointer">
+                    <FileText className="ml-2 h-4 w-4 text-green-600" />
+                    <span>{language === 'ar' ? 'تصدير Excel' : 'Export Excel'}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={exportToPDF} className="cursor-pointer">
+                    <FileText className="ml-2 h-4 w-4 text-red-600" />
+                    <span>{language === 'ar' ? 'تصدير PDF' : 'Export PDF'}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={exportToWord} className="cursor-pointer">
+                    <FileText className="ml-2 h-4 w-4 text-blue-600" />
+                    <span>{language === 'ar' ? 'تصدير Word' : 'Export Word'}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
         </div>
       </CardHeader>
 
       <CardContent>
-        {contracts.length === 0 ? (
+        {/* حقل البحث */}
+        <div className="mb-6">
+          <Input
+            type="text"
+            placeholder={language === 'ar' ? '🔍 ابحث برقم العقد أو اسم المشروع أو السنة...' : '🔍 Search by contract number, project name, or year...'}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="text-lg p-6 border-2 border-primary/30 focus:border-primary"
+          />
+          {searchQuery && (
+            <div className="mt-2 text-sm text-muted-foreground">
+              {language === 'ar' 
+                ? `📊 عرض ${filteredContracts.length} من ${contracts.length} عقد`
+                : `📊 Showing ${filteredContracts.length} of ${contracts.length} contracts`}
+            </div>
+          )}
+        </div>
+
+        {filteredContracts.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
-            {language === 'ar' ? 'لا توجد عقود' : 'No contracts found'}
+            {searchQuery
+              ? (language === 'ar' ? '❌ لا توجد نتائج للبحث' : '❌ No search results found')
+              : (language === 'ar' ? 'لا توجد عقود' : 'No contracts found')}
           </div>
         ) : (
           <div className="border-4 border-black rounded-lg overflow-hidden">
@@ -788,7 +828,7 @@ export const PerformanceContractsPage: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {contracts.map((contract, index) => (
+                {filteredContracts.map((contract, index) => (
                   <TableRow key={contract.id} className="border-b-2 border-black">
                     <TableCell className="text-center border-r-2 border-black bg-yellow-50 font-bold">
                       {index + 1}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
+import { useStats } from '../contexts/StatsContext';
 import { getServerUrl } from '../utils/supabase-client';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -15,9 +16,11 @@ import { NotificationSystem } from './NotificationSystem';
 import { ProgressTracker } from './ProgressTracker';
 import { QuickStats } from './QuickStats';
 import { ProjectTimeline } from './ProjectTimeline';
-import { AnalyticsDashboard } from './AnalyticsDashboard';
+import { EnhancedAnalyticsDashboard } from './EnhancedAnalyticsDashboard';
 import { AdvancedSearch } from './AdvancedSearch';
 import { ExportManager } from './ExportManager';
+import { DatabaseAdmin } from './DatabaseAdmin';
+import { PerformanceContracts } from './PerformanceContracts';
 import { LogOut, Plus, FileText, BarChart3, Calendar, Bot, Moon, Sun, Settings, Bell, Users, TrendingUp, Activity, FolderKanban, Globe } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { ArrowRight } from 'lucide-react';
@@ -28,14 +31,9 @@ type View = 'home' | 'projects' | 'create' | 'reports' | 'daily' | 'ai' | 'users
 export const Dashboard: React.FC = () => {
   const { user, signOut, accessToken } = useAuth();
   const { language, toggleLanguage, t } = useLanguage();
+  const { totalProjects, activeProjects, completedProjects, avgProgress, refreshStats } = useStats();
   const [currentView, setCurrentView] = useState<View>('home');
   const [darkMode, setDarkMode] = useState(false);
-  const [totalProjects, setTotalProjects] = useState(0);
-  const [stats, setStats] = useState({
-    activeProjects: 0,
-    completedProjects: 0,
-    avgProgress: 0
-  });
 
   // Get user role
   const userRole = user?.user_metadata?.role || user?.role || 'Observer';
@@ -63,59 +61,6 @@ export const Dashboard: React.FC = () => {
       document.documentElement.classList.remove('dark');
     }
   }, [darkMode]);
-
-  // تحميل الإحصائيات
-  useEffect(() => {
-    const fetchProjectsCount = async () => {
-      if (!accessToken) {
-        console.log('Dashboard: No access token, skipping fetch');
-        return;
-      }
-      
-      try {
-        const response = await fetch(
-          getServerUrl('/projects'),
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          }
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          const projects = data.projects || [];
-          setTotalProjects(projects.length);
-          
-          // حساب الإحصائيات
-          const active = projects.filter((p: any) => 
-            p.status === 'جاري العمل' || p.status === 'جاري'
-          ).length;
-          
-          const completed = projects.filter((p: any) => 
-            p.status === 'تم الاستلام النهائي' || p.status === 'منجز'
-          ).length;
-          
-          const avgProgress = projects.length > 0
-            ? Math.round(projects.reduce((sum: number, p: any) => sum + (p.progressActual || 0), 0) / projects.length)
-            : 0;
-          
-          setStats({
-            activeProjects: active,
-            completedProjects: completed,
-            avgProgress
-          });
-        } else {
-          console.error('Dashboard: Failed to fetch projects:', response.status);
-        }
-      } catch (error) {
-        console.error('Error fetching projects count:', error);
-        // لا نعرض رسالة خطأ للمستخدم
-      }
-    };
-
-    fetchProjectsCount();
-  }, [accessToken]);
 
   const getMenuItems = () => {
     const baseItems = [
@@ -332,53 +277,6 @@ export const Dashboard: React.FC = () => {
               {/* Quick Stats */}
               <QuickStats />
 
-              {/* Stats Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card className="border-r-4 border-r-primary hover:shadow-lg transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-base font-bold">{t('stats.totalProjects')}</CardTitle>
-                    <FolderKanban className="h-5 w-5 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-4xl font-extrabold mb-1">{totalProjects}</div>
-                    <p className="text-sm text-muted-foreground font-medium">{t('stats.allProjects')}</p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-r-4 border-r-chart-3 hover:shadow-lg transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-base font-bold">{t('stats.activeProjects')}</CardTitle>
-                    <Activity className="h-5 w-5 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-4xl font-extrabold mb-1">{stats.activeProjects}</div>
-                    <p className="text-sm text-muted-foreground font-medium">{t('stats.inProgress')}</p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-r-4 border-r-secondary hover:shadow-lg transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-base font-bold">{t('stats.completedProjects')}</CardTitle>
-                    <TrendingUp className="h-5 w-5 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-4xl font-extrabold mb-1">{stats.completedProjects}</div>
-                    <p className="text-sm text-muted-foreground font-medium">{t('stats.completedSuccess')}</p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-r-4 border-r-chart-4 hover:shadow-lg transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-base font-bold">{t('stats.avgProgress')}</CardTitle>
-                    <BarChart3 className="h-5 w-5 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-4xl font-extrabold mb-1">{stats.avgProgress}%</div>
-                    <p className="text-sm text-muted-foreground font-medium">{t('stats.overallProgress')}</p>
-                  </CardContent>
-                </Card>
-              </div>
-
               {/* Quick Actions - فقط لمدير البرنامج */}
               {isGeneralManager && (
                 <Card>
@@ -438,7 +336,7 @@ export const Dashboard: React.FC = () => {
               <ProjectTimeline />
 
               {/* Analytics Dashboard */}
-              <AnalyticsDashboard />
+              <EnhancedAnalyticsDashboard />
 
               {/* Advanced Search */}
               <AdvancedSearch />
@@ -448,7 +346,10 @@ export const Dashboard: React.FC = () => {
             </div>
           )}
           {currentView === 'projects' && <ProjectsList />}
-          {currentView === 'create' && <CreateProject onSuccess={() => setCurrentView('projects')} />}
+          {currentView === 'create' && <CreateProject onSuccess={async () => { 
+            await refreshStats(); // ✅ تحديث الإحصائيات
+            setCurrentView('projects'); 
+          }} />}
           {currentView === 'reports' && <ReportsPage />}
           {currentView === 'daily' && <DailyReportsSQL />}
           {currentView === 'ai' && (

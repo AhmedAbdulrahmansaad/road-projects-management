@@ -48,6 +48,7 @@ interface DailyReport {
   officialVisits?: string;
   recommendations?: string;
   generalNotes?: string;
+  items?: string; // البنود - اختياري
   images?: string[];
   createdBy: string;
   createdByName: string;
@@ -89,7 +90,14 @@ export const DailyReportsSQL: React.FC = () => {
     officialVisits: '',
     recommendations: '',
     generalNotes: '',
+    items: '', // البنود - اختياري
   });
+
+  // State للصور المرفوعة
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  
+  // State للبنود - نفس CreateProject
+  const [reportItems, setReportItems] = useState<{ itemType: string; itemNumber: string; itemName: string; }[]>([]);
 
   useEffect(() => {
     if (accessToken) {
@@ -159,8 +167,26 @@ export const DailyReportsSQL: React.FC = () => {
       officialVisits: '',
       recommendations: '',
       generalNotes: '',
+      items: '', // البنود - اختياري
     });
     setEditingReport(null);
+    setUploadedImages([]);
+    setReportItems([]);
+  };
+
+  // وظائف إدارة البنود - نفس CreateProject
+  const addReportItem = () => {
+    setReportItems(prev => [...prev, { itemType: '', itemNumber: '', itemName: '' }]);
+  };
+
+  const removeReportItem = (index: number) => {
+    setReportItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateReportItem = (index: number, field: 'itemType' | 'itemNumber' | 'itemName', value: string) => {
+    setReportItems(prev => prev.map((item, i) => 
+      i === index ? { ...item, [field]: value } : item
+    ));
   };
 
   const handleSubmit = async () => {
@@ -170,13 +196,30 @@ export const DailyReportsSQL: React.FC = () => {
         ? getServerUrl(`/daily-reports-sql/${editingReport.id}`)
         : getServerUrl('/daily-reports-sql');
 
+      // ✅ تحويل البنود من array إلى JSON string
+      const itemsJson = reportItems.length > 0 ? JSON.stringify(reportItems) : '';
+
+      // ✅ إضافة الصور والبنود إلى البيانات المُرسلة
+      const dataToSend = {
+        ...formData,
+        images: uploadedImages, // ✅ إرسال الصور كـ array
+        items: itemsJson, // ✅ إرسال البنود كـ JSON string
+      };
+      
+      console.log('📤 Sending report data:', {
+        imagesCount: uploadedImages.length,
+        itemsCount: reportItems.length,
+        items: itemsJson,
+        dataToSend,
+      });
+
       const response = await fetch(url, {
         method,
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(dataToSend), // ✅ استخدام dataToSend بدلاً من formData
       });
 
       if (response.ok) {
@@ -216,7 +259,18 @@ export const DailyReportsSQL: React.FC = () => {
       officialVisits: report.officialVisits || '',
       recommendations: report.recommendations || '',
       generalNotes: report.generalNotes || '',
+      items: report.items || '', // البنود - اختياري
     });
+    // ✅ تحميل الصور - images هو array بالفعل
+    setUploadedImages(report.images || []);
+    // ✅ تحميل البنود - تحويل من JSON string إلى array
+    try {
+      const loadedItems = report.items ? JSON.parse(report.items) : [];
+      setReportItems(Array.isArray(loadedItems) ? loadedItems : []);
+    } catch (e) {
+      console.error('Error parsing items:', e);
+      setReportItems([]);
+    }
     setShowDialog(true);
   };
 
@@ -324,7 +378,7 @@ export const DailyReportsSQL: React.FC = () => {
       toast.error('حدث خطأ في تصدير التقرير');
     } finally {
       setExporting(null);
-      console.log('✅ انتهى التصدير');
+      console.log(' انتهى التصدير');
     }
   };
 
@@ -946,24 +1000,144 @@ export const DailyReportsSQL: React.FC = () => {
                   type="file"
                   accept="image/*"
                   multiple
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const files = e.target.files;
                     if (files && files.length > 0) {
-                      toast.info(`تم اختيار ${files.length} صورة 📷`);
-                      // Note: File upload will be handled when we add Supabase Storage
+                      toast.info(`جاري تحميل ${files.length} صورة 📷...`);
+                      
+                      // ✅ تحويل الصور إلى base64
+                      const base64Images: string[] = [];
+                      for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
+                        // فحص حجم الملف (أقل من 2MB)
+                        if (file.size > 2 * 1024 * 1024) {
+                          toast.error(`الصورة ${file.name} كبيرة جداً! الحد الأقصى 2MB`);
+                          continue;
+                        }
+                        
+                        const reader = new FileReader();
+                        const base64 = await new Promise<string>((resolve) => {
+                          reader.onload = () => resolve(reader.result as string);
+                          reader.readAsDataURL(file);
+                        });
+                        base64Images.push(base64);
+                      }
+                      
+                      setUploadedImages(prev => [...prev, ...base64Images]);
+                      toast.success(`تم تحميل ${base64Images.length} صورة بنجاح ✅`);
                     }
                   }}
                   className="cursor-pointer"
                 />
                 <p className="text-xs text-muted-foreground">
-                  💡 يمكنك رفع عدة صور للموقع، المعدات، الأعمال المنفذة، إلخ...
+                  💡 يمكنك رفع عدة صور للموقع، المعدات، الأعمال المنفذة، إلخ... (حجم كل صورة أقل من 2MB)
                 </p>
+                
+                {/* ✅ عرض الصور المرفوعة */}
+                {uploadedImages.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <Label className="text-sm font-bold">الصور المرفوعة ({uploadedImages.length}):</Label>
+                    <div className="grid grid-cols-3 gap-3">
+                      {uploadedImages.map((img, idx) => (
+                        <div key={idx} className="relative group">
+                          <img 
+                            src={img} 
+                            alt={`صورة ${idx + 1}`} 
+                            className="w-full h-24 object-cover rounded-lg border-2 border-gray-200 dark:border-gray-700"
+                          />
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="destructive"
+                            className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => {
+                              setUploadedImages(prev => prev.filter((_, i) => i !== idx));
+                              toast.success('تم حذف الصورة');
+                            }}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
                 <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
                   <p className="text-sm text-blue-700 dark:text-blue-300">
-                    ℹ️ <strong>ملاحظة:</strong> خاصية رفع الصور متوفرة! يمكنك اختيار صور متعددة من جهازك.
-                    سيتم حفظها مع التقرير في قاعدة البيانات.
+                    ℹ️ <strong>ملاحظة:</strong> خاصية رفع الصور مفعّلة! يمكنك اختيار صور متعددة من جهازك.
+                    سيتم حفظها مع التقرير في قاعدة البيانات وستظهر في التقرير المُصدّر.
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* القسم 10: البنود - اختياري */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b-2 border-chart-2/20 pb-3">
+                <h3 className="text-xl font-bold">
+                  📝 البنود - اختياري
+                </h3>
+                <Button type="button" onClick={addReportItem} size="sm" variant="default" className="h-10">
+                  <Plus className="h-5 w-5 ml-2" />
+                  إضافة بند
+                </Button>
+              </div>
+
+              {reportItems.length === 0 && (
+                <div className="p-8 text-center border-2 border-dashed border-muted rounded-xl bg-muted/20">
+                  <p className="text-muted-foreground font-medium text-base">
+                    لا توجد بنود بعد. اضغط "إضافة بند" لبدء الإضافة
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {reportItems.map((item, index) => (
+                  <Card key={index} className="p-4 hover:shadow-md transition-shadow">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-sm">نوع البند</Label>
+                        <Input
+                          value={item.itemType}
+                          onChange={(e) => updateReportItem(index, 'itemType', e.target.value)}
+                          placeholder="مثال: بند رئيسي"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm">رقم البند</Label>
+                        <Input
+                          value={item.itemNumber}
+                          onChange={(e) => updateReportItem(index, 'itemNumber', e.target.value)}
+                          placeholder="مثال: 1.2.3"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm">اسم البند</Label>
+                        <Input
+                          value={item.itemName}
+                          onChange={(e) => updateReportItem(index, 'itemName', e.target.value)}
+                          placeholder="مثال: أعمال الحفر"
+                        />
+                      </div>
+
+                      <div className="flex items-end">
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          onClick={() => removeReportItem(index)}
+                          className="h-10 w-10"
+                          title="حذف البند"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
               </div>
             </div>
 
@@ -1111,6 +1285,84 @@ export const DailyReportsSQL: React.FC = () => {
                       <p className="text-sm mt-1 whitespace-pre-wrap">{viewingReport.generalNotes}</p>
                     </div>
                   )}
+                </Card>
+              )}
+
+              {/* البنود - اختياري */}
+              {viewingReport.items && (() => {
+                try {
+                  const parsedItems = JSON.parse(viewingReport.items);
+                  if (Array.isArray(parsedItems) && parsedItems.length > 0) {
+                    return (
+                      <Card className="p-4 bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800">
+                        <h3 className="font-bold text-lg mb-3 text-purple-700 dark:text-purple-300">📝 البنود ({parsedItems.length})</h3>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b-2 border-purple-300 dark:border-purple-700">
+                                <th className="text-right p-2 font-bold">#</th>
+                                <th className="text-right p-2 font-bold">نوع البند</th>
+                                <th className="text-right p-2 font-bold">رقم البند</th>
+                                <th className="text-right p-2 font-bold">اسم البند</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {parsedItems.map((item: any, idx: number) => (
+                                <tr key={idx} className="border-b border-purple-200 dark:border-purple-800">
+                                  <td className="p-2">{idx + 1}</td>
+                                  <td className="p-2">{item.itemType || '-'}</td>
+                                  <td className="p-2">{item.itemNumber || '-'}</td>
+                                  <td className="p-2">{item.itemName || '-'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </Card>
+                    );
+                  }
+                } catch (e) {
+                  // إذا فشل parsing، عرض النص كما هو
+                  return (
+                    <Card className="p-4 bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800">
+                      <h3 className="font-bold text-lg mb-3 text-purple-700 dark:text-purple-300">📝 البنود</h3>
+                      <p className="text-sm whitespace-pre-wrap">{viewingReport.items}</p>
+                    </Card>
+                  );
+                }
+                return null;
+              })()}
+              
+              {/* ✅ الصور المرفقة */}
+              {viewingReport.images && viewingReport.images.length > 0 && (
+                <Card className="p-4 bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800">
+                  <h3 className="font-bold text-lg mb-3 text-purple-700 dark:text-purple-300">📷 صور التقرير ({viewingReport.images.length})</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {viewingReport.images.map((img: string, idx: number) => (
+                      <div key={idx} className="relative group">
+                        <img 
+                          src={img} 
+                          alt={`صورة ${idx + 1}`} 
+                          className="w-full h-40 object-cover rounded-lg border-2 border-purple-300 dark:border-purple-700 shadow-md hover:shadow-xl transition-all cursor-pointer"
+                          onClick={() => {
+                            const win = window.open('', '_blank');
+                            if (win) {
+                              win.document.write(`<html dir="rtl"><head><title>صورة ${idx + 1}</title><style>body{margin:0;padding:20px;background:#000;display:flex;justify-content:center;align-items:center;min-height:100vh;}img{max-width:100%;max-height:100vh;border:5px solid #fff;border-radius:10px;box-shadow:0 10px 50px rgba(255,255,255,0.3);}</style></head><body><img src="${img}" alt="صورة ${idx + 1}" /></body></html>`);
+                            }
+                          }}
+                        />
+                        <div className="absolute bottom-2 right-2 bg-purple-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">
+                          📷 {idx + 1}
+                        </div>
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded-lg flex items-center justify-center">
+                          <span className="text-white opacity-0 group-hover:opacity-100 text-lg font-bold">🔍 انقر للتكبير</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-purple-600 dark:text-purple-400 mt-3 text-center">
+                    💡 انقر على أي صورة لعرضها بحجم كامل
+                  </p>
                 </Card>
               )}
             </div>

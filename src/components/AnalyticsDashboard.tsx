@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { TrendingUp, DollarSign, Users, Calendar, CheckCircle } from 'lucide-react';
+import { TrendingUp, Banknote, Users, Calendar, CheckCircle } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from './AuthContext';
 import { getServerUrl } from '../utils/supabase-client';
@@ -14,6 +14,13 @@ export const AnalyticsDashboard: React.FC = () => {
     totalProjects: 0,
     projectStatus: [] as any[],
     regionalPerformance: [] as any[],
+    monthlyProgress: [] as any[],
+    avgCompletion: 0,
+    totalBudget: 0,
+    activeProjects: 0,
+    completedProjects: 0,
+    totalTeamMembers: 0,
+    delayedProjects: 0,
   });
 
   useEffect(() => {
@@ -21,15 +28,46 @@ export const AnalyticsDashboard: React.FC = () => {
       if (!accessToken) return;
 
       try {
-        const response = await fetch(getServerUrl('/projects'), {
+        // جلب المشاريع
+        const projectsResponse = await fetch(getServerUrl('/projects'), {
           headers: { 'Authorization': `Bearer ${accessToken}` },
         });
 
-        if (response.ok) {
-          const data = await response.json();
+        // جلب التقارير اليومية لحساب عدد العمال
+        const reportsResponse = await fetch(getServerUrl('/daily-reports-sql'), {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        });
+
+        if (projectsResponse.ok) {
+          const data = await projectsResponse.json();
           const projects = data.projects || [];
 
-          // إحصائيات الحالات
+          // حساب عدد العمال من آخر تقرير يومي
+          let totalTeamMembers = 0;
+          if (reportsResponse.ok) {
+            const reportsData = await reportsResponse.json();
+            const reports = reportsData.reports || [];
+            if (reports.length > 0) {
+              // جمع العمال من جميع التقارير الحديثة (آخر 30 يوم)
+              const thirtyDaysAgo = new Date();
+              thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+              
+              const recentReports = reports.filter((r: any) => {
+                const reportDate = new Date(r.reportDate);
+                return reportDate >= thirtyDaysAgo;
+              });
+
+              if (recentReports.length > 0) {
+                // أخذ متوسط عدد العمال
+                const totalWorkers = recentReports.reduce((sum: number, r: any) => {
+                  return sum + (r.totalWorkers || 0);
+                }, 0);
+                totalTeamMembers = Math.round(totalWorkers / recentReports.length);
+              }
+            }
+          }
+
+          // إحصائيات احالات
           const statusCounts = {
             'نشط': projects.filter((p: any) => p.status === 'جاري العمل' || p.status === 'جاري').length,
             'مكتمل': projects.filter((p: any) => p.status === 'تم الاستلام النهائي' || p.status === 'منجز').length,
@@ -61,10 +99,90 @@ export const AnalyticsDashboard: React.FC = () => {
             completion: Math.round(regions[region].totalCompletion / regions[region].projects)
           }));
 
+          // حساب التقدم الشهري من البيانات الحقيقية
+          const monthlyData: any = {};
+          const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+          const monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          
+          projects.forEach((p: any) => {
+            if (p.createdAt) {
+              const date = new Date(p.createdAt);
+              const monthIndex = date.getMonth();
+              const monthName = language === 'ar' ? months[monthIndex] : monthsEn[monthIndex];
+              
+              if (!monthlyData[monthName]) {
+                monthlyData[monthName] = { total: 0, count: 0, budget: 0 };
+              }
+              monthlyData[monthName].total += (p.progressActual || 0);
+              monthlyData[monthName].count++;
+              monthlyData[monthName].budget += (p.projectValue || 0);
+            }
+          });
+
+          const monthlyProgress = Object.keys(monthlyData).map(month => ({
+            month,
+            progress: Math.round(monthlyData[month].total / monthlyData[month].count) || 0,
+            target: Math.round((monthlyData[month].total / monthlyData[month].count) * 0.95) || 0,
+            cost: (monthlyData[month].budget / 1000000).toFixed(1)
+          }));
+
+          // حساب الإحصائيات الإجمالية
+          const avgCompletion = projects.length > 0
+            ? Math.round(projects.reduce((sum: number, p: any) => sum + (p.progressActual || 0), 0) / projects.length)
+            : 0;
+
+          const totalBudget = projects.reduce((sum: number, p: any) => sum + (parseFloat(p.projectValue) || 0), 0);
+          
+          // ✅ المشاريع النشطة = كل شيء ما عدا "متوقف"
+          const activeProjects = projects.filter((p: any) => 
+            p.status !== 'متوقف' && p.status !== 'Stopped'
+          ).length;
+
+          // ✅ المشاريع المكتملة = فقط حالة "منجز"
+          const completedProjects = projects.filter((p: any) => 
+            p.status === 'منجز' || p.status === 'Completed'
+          ).length;
+
+          // حساب المشاريع المتأخرة (التي انتهى موعدها ولم تكتمل بعد)
+          const today = new Date();
+          today.setHours(0, 0, 0, 0); // ✅ تصفير الوقت للمقارنة الصحيحة
+          
+          const delayedProjects = projects.filter((p: any) => {
+            // 1. المشاريع التي لها حالة "متأخر" أو "متعثر" مباشرة
+            if (p.status === 'متأخر' || p.status === 'متعثر') {
+              return true;
+            }
+            
+            // 2. المشاريع التي انتهى موعدها ولم تكتمل بعد
+            if (p.contractEndDate) {
+              const endDate = new Date(p.contractEndDate);
+              endDate.setHours(0, 0, 0, 0); // ✅ تصفير الوقت
+              
+              // إذا كان تاريخ النهاية قد مضى والمشروع لم يكتمل
+              if (endDate < today) {
+                const isNotCompleted = p.status !== 'تم الاستلام النهائي' && 
+                                      p.status !== 'منجز' && 
+                                      p.status !== 'Completed';
+                if (isNotCompleted) {
+                  return true;
+                }
+              }
+            }
+            
+            return false;
+          }).length;
+
           setRealData({
             totalProjects: projects.length,
             projectStatus,
             regionalPerformance,
+            monthlyProgress: monthlyProgress.slice(0, 6),
+            avgCompletion,
+            totalBudget,
+            activeProjects,
+            completedProjects,
+            totalTeamMembers,
+            delayedProjects,
           });
         }
       } catch (error) {
@@ -74,24 +192,6 @@ export const AnalyticsDashboard: React.FC = () => {
 
     fetchRealData();
   }, [accessToken, language]);
-
-  // بيانات التقدم الشهري - يمكن حسابها من التقارير اليومية لاحقاً
-  const monthlyProgress = [
-    { month: language === 'ar' ? 'يناير' : 'Jan', progress: 65, target: 60, cost: 2.5 },
-    { month: language === 'ar' ? 'فبراير' : 'Feb', progress: 72, target: 70, cost: 2.8 },
-    { month: language === 'ar' ? 'مارس' : 'Mar', progress: 78, target: 75, cost: 3.1 },
-    { month: language === 'ar' ? 'أبريل' : 'Apr', progress: 82, target: 80, cost: 3.3 },
-    { month: language === 'ar' ? 'مايو' : 'May', progress: 88, target: 85, cost: 3.6 },
-    { month: language === 'ar' ? 'يونيو' : 'Jun', progress: 92, target: 90, cost: 3.9 }
-  ];
-
-  // بيانات التكاليف الفصلية - يمكن حسابها من قيم المشاريع
-  const quarterlyCosts = [
-    { quarter: 'Q1', planned: 8.5, actual: 8.2, saved: 0.3 },
-    { quarter: 'Q2', planned: 9.2, actual: 9.5, saved: -0.3 },
-    { quarter: 'Q3', planned: 10.1, actual: 9.8, saved: 0.3 },
-    { quarter: 'Q4', planned: 11.0, actual: 10.5, saved: 0.5 }
-  ];
 
   return (
     <div className="space-y-6">
@@ -135,7 +235,7 @@ export const AnalyticsDashboard: React.FC = () => {
               </div>
               <span className="text-xs font-bold text-green-500">+5%</span>
             </div>
-            <p className="text-3xl font-extrabold mb-1">88%</p>
+            <p className="text-3xl font-extrabold mb-1">{realData.avgCompletion}%</p>
             <p className="text-sm font-semibold text-muted-foreground">
               {language === 'ar' ? 'معدل الإنجاز' : 'Completion Rate'}
             </p>
@@ -146,13 +246,18 @@ export const AnalyticsDashboard: React.FC = () => {
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-3">
               <div className="p-3 rounded-xl bg-primary/10">
-                <DollarSign className="h-6 w-6 text-primary" />
+                <Banknote className="h-6 w-6 text-primary" />
               </div>
-              <span className="text-xs font-bold text-green-500">+2%</span>
+              <span className="text-xs font-bold text-green-500">
+                {language === 'ar' ? 'ر.س' : 'SAR'}
+              </span>
             </div>
-            <p className="text-3xl font-extrabold mb-1">38.5M</p>
+            <p className="text-3xl font-extrabold mb-1 flex items-center gap-1">
+              {(realData.totalBudget / 1000000).toFixed(1)}
+              <span className="text-lg">م</span>
+            </p>
             <p className="text-sm font-semibold text-muted-foreground">
-              {language === 'ar' ? 'الميزانية (ريال)' : 'Budget (SAR)'}
+              {language === 'ar' ? 'الميزانية (ريال سعودي)' : 'Budget (SAR)'}
             </p>
           </CardContent>
         </Card>
@@ -163,11 +268,15 @@ export const AnalyticsDashboard: React.FC = () => {
               <div className="p-3 rounded-xl bg-secondary/10">
                 <Users className="h-6 w-6 text-secondary" />
               </div>
-              <span className="text-xs font-bold text-blue-500">+12</span>
+              {realData.totalTeamMembers > 0 && (
+                <span className="text-xs font-bold text-blue-500">✓</span>
+              )}
             </div>
-            <p className="text-3xl font-extrabold mb-1">156</p>
+            <p className="text-3xl font-extrabold mb-1">
+              {realData.totalTeamMembers || 0}
+            </p>
             <p className="text-sm font-semibold text-muted-foreground">
-              {language === 'ar' ? 'فريق العمل' : 'Team Members'}
+              {language === 'ar' ? 'متوسط عدد العمال' : 'Avg Workers'}
             </p>
           </CardContent>
         </Card>
@@ -178,9 +287,11 @@ export const AnalyticsDashboard: React.FC = () => {
               <div className="p-3 rounded-xl bg-red-100 dark:bg-red-900/30">
                 <Calendar className="h-6 w-6 text-red-600" />
               </div>
-              <span className="text-xs font-bold text-red-500">-2</span>
+              {realData.delayedProjects > 0 && (
+                <span className="text-xs font-bold text-red-500">!</span>
+              )}
             </div>
-            <p className="text-3xl font-extrabold mb-1">3</p>
+            <p className="text-3xl font-extrabold mb-1">{realData.delayedProjects}</p>
             <p className="text-sm font-semibold text-muted-foreground">
               {language === 'ar' ? 'مشاريع متأخرة' : 'Delayed Projects'}
             </p>
@@ -200,7 +311,7 @@ export const AnalyticsDashboard: React.FC = () => {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={monthlyProgress}>
+              <LineChart data={realData.monthlyProgress}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
                 <XAxis dataKey="month" style={{ fontSize: '14px', fontWeight: 600 }} />
                 <YAxis style={{ fontSize: '14px', fontWeight: 600 }} />
@@ -279,47 +390,6 @@ export const AnalyticsDashboard: React.FC = () => {
 
       {/* Charts Row 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Quarterly Costs Chart */}
-        <Card className="glass-card border-0 shadow-xl hover-lift animate-fade-in-up delay-300">
-          <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2">
-              <DollarSign className="h-6 w-6 text-primary" />
-              {language === 'ar' ? 'التكاليف الفصلية (مليون ريال)' : 'Quarterly Costs (M SAR)'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={quarterlyCosts}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
-                <XAxis dataKey="quarter" style={{ fontSize: '14px', fontWeight: 600 }} />
-                <YAxis style={{ fontSize: '14px', fontWeight: 600 }} />
-                <Tooltip 
-                  contentStyle={{ 
-                    background: 'rgba(255, 255, 255, 0.95)', 
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    fontWeight: 600
-                  }} 
-                />
-                <Legend wrapperStyle={{ fontSize: '14px', fontWeight: 600 }} />
-                <Bar 
-                  dataKey="planned" 
-                  fill="#FDB714" 
-                  name={language === 'ar' ? 'المخطط' : 'Planned'}
-                  radius={[8, 8, 0, 0]}
-                />
-                <Bar 
-                  dataKey="actual" 
-                  fill="#006C35" 
-                  name={language === 'ar' ? 'الفعلي' : 'Actual'}
-                  radius={[8, 8, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
         {/* Regional Performance Chart */}
         <Card className="glass-card border-0 shadow-xl hover-lift animate-fade-in-up delay-400">
           <CardHeader>

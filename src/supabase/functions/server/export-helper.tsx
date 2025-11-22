@@ -1,5 +1,34 @@
 // 🎨 Helper functions for BEAUTIFUL Arabic exports with proper RTL and colors
 
+// ✅ دالة لمعالجة الصور - قد تأتي كـ JSON string أو array
+function parseImages(images: any): string[] {
+  if (!images) return [];
+  if (Array.isArray(images)) return images;
+  if (typeof images === 'string') {
+    try {
+      const parsed = JSON.parse(images);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+// ✅ دالة لمعالجة البنود - قد تأتي كـ JSON string أو text
+function parseItems(items: any): string {
+  if (!items) return '';
+  if (typeof items === 'string') return items;
+  if (typeof items === 'object') {
+    try {
+      return JSON.stringify(items, null, 2);
+    } catch {
+      return String(items);
+    }
+  }
+  return String(items);
+}
+
 export function generateWordHTML(report: any): string {
   const reportDate = new Date(report.report_date).toLocaleDateString("ar-SA", {
     weekday: "long",
@@ -411,6 +440,25 @@ body {
     </div>` : ''}
     ` : ''}
     
+    ${report.items ? `
+    <h2 class="section-title" style="background:linear-gradient(135deg,#673ab7 0%,#512da8 100%);">📝 البنود</h2>
+    <div class="content-box" style="background:linear-gradient(135deg,#f3e5f5 0%,#e1bee7 100%);border-right-color:#673ab7;">
+      ${safeReplace(parseItems(report.items))}
+    </div>
+    ` : ''}
+    
+    ${report.images && report.images.length > 0 ? `
+    <h2 class="section-title" style="background:linear-gradient(135deg,#9c27b0 0%,#7b1fa2 100%);">📷 صور التقرير</h2>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin:25px 0;">
+      ${parseImages(report.images).map((img: string, idx: number) => `
+        <div style="position:relative;border-radius:15px;overflow:hidden;box-shadow:0 4px 15px rgba(0,0,0,0.15);border:3px solid #9c27b0;">
+          <img src="${img}" alt="صورة ${idx + 1}" style="width:100%;height:300px;object-fit:cover;display:block;" />
+          <div style="position:absolute;top:10px;right:10px;background:rgba(156,39,176,0.9);color:white;padding:8px 15px;border-radius:20px;font-weight:bold;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,0.3);">📷 صورة ${idx + 1}</div>
+        </div>
+      `).join('')}
+    </div>
+    ` : ''}
+    
     <div class="footer">
       <p class="footer-title">🇸🇦 نظام إدارة مشاريع الطرق - المملكة العربية السعودية</p>
       <p class="footer-date">تاريخ الطباعة: ${new Date().toLocaleDateString("ar-SA")} - الساعة: ${new Date().toLocaleTimeString("ar-SA")}</p>
@@ -466,6 +514,9 @@ export function generateExcelCSV(report: any): string {
     ["الزيارات الرسمية", report.official_visits || "-"],
     ["التوصيات", report.recommendations || "-"],
     ["ملاحظات عامة", report.general_notes || "-"],
+    [""],
+    ["📷 الصور المرفقة", ""],
+    [report.images && report.images.length > 0 ? `تم إرفاق ${report.images.length} صورة مع التقرير. لعرض الصور، يرجى فتح التقرير بصيغة PDF أو Word.` : "لا توجد صور مرفقة", ""],
     [""],
     ["تاريخ التصدير:", new Date().toLocaleDateString("ar-SA")],
   ];
@@ -745,6 +796,25 @@ ${report.general_notes ? `
 <strong style="color:#006C35;font-size:18px;">📌 ملاحظات عامة:</strong><br>
 ${safeReplace(report.general_notes)}
 </div>` : ''}
+` : ''}
+
+${report.items ? `
+<h2 class="section-title" style="background:linear-gradient(135deg,#673ab7 0%,#512da8 100%);">📝 البنود</h2>
+<div class="content-box" style="background:linear-gradient(135deg,#f3e5f5 0%,#e1bee7 100%);border-right-color:#673ab7;">
+  ${safeReplace(parseItems(report.items))}
+</div>
+` : ''}
+
+${report.images && report.images.length > 0 ? `
+<h2 class="section-title" style="background:linear-gradient(135deg,#9c27b0 0%,#7b1fa2 100%);">📷 صور التقرير</h2>
+<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin:25px 0;">
+  ${parseImages(report.images).map((img: string, idx: number) => `
+    <div style="position:relative;border-radius:15px;overflow:hidden;box-shadow:0 4px 15px rgba(0,0,0,0.15);border:3px solid #9c27b0;">
+      <img src="${img}" alt="صورة ${idx + 1}" style="width:100%;height:300px;object-fit:cover;display:block;" />
+      <div style="position:absolute;top:10px;right:10px;background:rgba(156,39,176,0.9);color:white;padding:8px 15px;border-radius:20px;font-weight:bold;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,0.3);">📷 صورة ${idx + 1}</div>
+    </div>
+  `).join('')}
+</div>
 ` : ''}
 
 <div class="footer">

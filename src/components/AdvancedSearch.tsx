@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Search, Filter, X, Calendar, MapPin, DollarSign, TrendingUp, SlidersHorizontal } from 'lucide-react';
+import { Search, Filter, X, Calendar, MapPin, Banknote, TrendingUp, SlidersHorizontal } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface SearchFilters {
@@ -239,7 +239,7 @@ export const AdvancedSearch: React.FC = () => {
             {/* Budget Range Filter */}
             <div className="space-y-3">
               <label className="text-base font-bold flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-primary" />
+                <Banknote className="h-5 w-5 text-primary" />
                 {language === 'ar' ? 'الميزانية (ريال)' : 'Budget (SAR)'}
               </label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

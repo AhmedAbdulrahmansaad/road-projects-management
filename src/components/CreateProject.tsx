@@ -46,7 +46,7 @@ export const CreateProject: React.FC<CreateProjectProps> = ({ onSuccess }) => {
     region: '', // المنطقة
     projectValue: '', // قيمة التبليغ
     notes: '', // الملاحظات
-    hostName: '', // اسم المضيف
+    hostName: '', // اسم المقاول
   });
 
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
@@ -120,7 +120,21 @@ export const CreateProject: React.FC<CreateProjectProps> = ({ onSuccess }) => {
       });
 
       if (!projectResponse.ok) {
-        throw new Error(t('create.error'));
+        const errorData = await projectResponse.json();
+        
+        // ✅ إذا كان الخطأ constraint violation، أعطي رسالة واضحة
+        if (errorData.error && errorData.error.includes('projects_status_check')) {
+          toast.error(
+            language === 'ar' 
+              ? '❌ خطأ في حالة المشروع! يرجى تحديث قاعدة البيانات. راجع ملف FIX_DATABASE_CONSTRAINT.md' 
+              : '❌ Project status error! Please update database. See FIX_DATABASE_CONSTRAINT.md',
+            { duration: 8000 }
+          );
+          console.error('🔧 Database constraint error. Run this SQL in Supabase:\n\nALTER TABLE projects DROP CONSTRAINT IF EXISTS projects_status_check;\nALTER TABLE projects ADD CONSTRAINT projects_status_check CHECK (status IN (\'جاري العمل\', \'منجز\', \'متأخر\', \'متقدم\', \'متعثر\', \'متوقف\', \'تم الاستلام الابتدائي\', \'تم الرفع بالاستلام الابتدائي\', \'تم الرفع بالاستلام النهائي\', \'تم الاستلام النهائي\', \'In Progress\', \'Completed\', \'Delayed\', \'Advanced\', \'Stalled\', \'Stopped\'));');
+        } else {
+          toast.error(errorData.error || t('create.error'));
+        }
+        throw new Error(errorData.error || t('create.error'));
       }
 
       toast.success(t('create.success'));
@@ -148,23 +162,21 @@ export const CreateProject: React.FC<CreateProjectProps> = ({ onSuccess }) => {
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="workOrderNumber">{t('create.workOrderNumber')} *</Label>
+                    <Label htmlFor="workOrderNumber">{t('create.workOrderNumber')}</Label>
                     <Input
                       id="workOrderNumber"
                       value={formData.workOrderNumber}
                       onChange={(e) => handleChange('workOrderNumber', e.target.value)}
-                      required
                       placeholder={language === 'ar' ? 'مثال: 2024/123' : 'Example: 2024/123'}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="contractNumber">رقم العقد *</Label>
+                    <Label htmlFor="contractNumber">رقم العقد</Label>
                     <Input
                       id="contractNumber"
                       value={formData.contractNumber}
                       onChange={(e) => handleChange('contractNumber', e.target.value)}
-                      required
                       placeholder={language === 'ar' ? 'مثال: 2024-CT-456' : 'Example: 2024-CT-456'}
                     />
                   </div>
@@ -288,7 +300,9 @@ export const CreateProject: React.FC<CreateProjectProps> = ({ onSuccess }) => {
                         <SelectItem value="متقدم">متقدم</SelectItem>
                         <SelectItem value="متعثر">متعثر</SelectItem>
                         <SelectItem value="متوقف">متوقف</SelectItem>
+                        <SelectItem value="تم الاستلام الابتدائي">تم الاستلام الابتدائي</SelectItem>
                         <SelectItem value="تم الرفع بالاستلام الابتدائي">تم الرفع بالاستلام الابتدائي</SelectItem>
+                        <SelectItem value="تم الرفع بالاستلام النهائي">تم الرفع بالاستلام النهائي</SelectItem>
                         <SelectItem value="تم الاستلام النهائي">تم الاستلام النهائي</SelectItem>
                       </SelectContent>
                     </Select>
@@ -395,7 +409,7 @@ export const CreateProject: React.FC<CreateProjectProps> = ({ onSuccess }) => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="hostName">{language === 'ar' ? 'اسم المضيف' : 'Host Name'}</Label>
+                  <Label htmlFor="hostName">{language === 'ar' ? 'اسم المقاول' : 'Contractor Name'}</Label>
                   <Input
                     id="hostName"
                     value={formData.hostName}

@@ -35,6 +35,12 @@ export const NotificationSystem: React.FC = () => {
   }, [accessToken]);
 
   const fetchNotifications = async () => {
+    // ✅ التحقق من accessToken قبل الطلب
+    if (!accessToken) {
+      console.log('NotificationSystem: No access token available');
+      return;
+    }
+    
     try {
       const response = await fetch(getServerUrl('/notifications'), {
         headers: {
@@ -47,11 +53,15 @@ export const NotificationSystem: React.FC = () => {
         setNotifications(data.notifications || []);
         setUnreadCount(data.notifications?.filter((n: Notification) => !n.read).length || 0);
       } else {
-        console.warn('Notifications fetch returned non-OK status:', response.status);
+        // ✅ عدم عرض رسالة 401 إذا كان المستخدم غير مسجل دخول
+        if (response.status === 401) {
+          console.log('NotificationSystem: Unauthorized (401) - User may not be logged in');
+        } else {
+          console.warn('Notifications fetch returned non-OK status:', response.status);
+        }
       }
     } catch (error) {
-      console.warn('Error fetching notifications (server may not be ready):', error);
-      // Don't show error to user, just fail silently
+      console.error('Notifications fetch error:', error);
     }
   };
 

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
+import { useStats } from '../contexts/StatsContext';
 import { getServerUrl } from '../utils/supabase-client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
@@ -18,7 +20,6 @@ import {
 } from './ui/alert-dialog';
 import { FileText, Calendar, TrendingUp, Trash2 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import { useLanguage } from '../contexts/LanguageContext';
 import { EditProjectDialog } from './EditProjectDialog';
 
 interface Project {
@@ -54,6 +55,7 @@ interface ProjectsListProps {
 export const ProjectsList: React.FC<ProjectsListProps> = ({ limit }) => {
   const { accessToken, user } = useAuth();
   const { t, language } = useLanguage();
+  const { refreshStats } = useStats();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -82,6 +84,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ limit }) => {
         const data = await response.json();
         const allProjects = data.projects || [];
         setProjects(limit ? allProjects.slice(0, limit) : allProjects);
+        await refreshStats(); // ✅ تحديث الإحصائيات
       }
     } catch (error) {
       console.error('Error fetching projects:', error);
@@ -106,12 +109,14 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ limit }) => {
       case 'متقدم':
       case 'Advanced':
         return 'bg-green-600'; // أخضر
+      case 'تم الاستلام الابتدائي':
+        return 'bg-gray-400'; // رصاصي فاتح
       case 'تم الرفع بالاستلام الابتدائي':
-      case 'Preliminary Handover':
-        return 'bg-gray-400'; // رمادي
+        return 'bg-gray-400'; // رصاصي فاتح
+      case 'تم الرفع بالاستلام النهائي':
+        return 'bg-gray-500'; // رصاصي متوسط
       case 'تم الاستلام النهائي':
-      case 'Final Handover':
-        return 'bg-gray-500'; // رمادي
+        return 'bg-gray-500'; // رصاصي متوسط
       case 'منجز':
       case 'Completed':
         return 'bg-green-500';
@@ -140,6 +145,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ limit }) => {
 
       if (response.ok) {
         setProjects(projects.filter(project => project.id !== projectId));
+        await refreshStats(); // ✅ تحديث الإحصائيات
         toast.success(t('projects.deleteSuccess'));
       } else {
         toast.error(t('projects.deleteError'));
@@ -258,7 +264,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ limit }) => {
                   <div className="flex items-center gap-2 col-span-2">
                     <FileText className="h-4 w-4 text-muted-foreground" />
                     <div>
-                      <div className="text-muted-foreground text-xs">{language === 'ar' ? 'اسم المضيف' : 'Host Name'}</div>
+                      <div className="text-muted-foreground text-xs">{language === 'ar' ? 'اسم المقاول' : 'Contractor Name'}</div>
                       <div className="font-semibold">{project.hostName}</div>
                     </div>
                   </div>

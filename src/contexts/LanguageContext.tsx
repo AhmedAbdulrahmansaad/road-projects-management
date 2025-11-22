@@ -199,7 +199,7 @@ const translations = {
     'projects.noProjects': 'لا توجد مشاريع',
     'projects.startCreating': 'ابدأ بإنشاء مشروع جديد',
     'projects.projectNumber': 'رقم المشروع',
-    'projects.year': 'النة',
+    'projects.year': 'السنة',
     'projects.value': 'القيمة',
     'projects.million': 'م.ر',
     'projects.progress': 'الإنجاز',

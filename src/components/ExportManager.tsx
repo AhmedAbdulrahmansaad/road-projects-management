@@ -275,145 +275,252 @@ export const ExportManager: React.FC = () => {
 
   const exportToPDF = async () => {
     try {
-      const { jsPDF } = await import('jspdf');
-      await import('jspdf-autotable');
+      // ✅ طريقة جديدة: إنشاء HTML وفتحه في نافذة للطباعة كـ PDF
+      // بدلاً من استخدام jsPDF الذي لا يدعم العربية
       
-      const doc = new jsPDF('l', 'mm', 'a4'); // landscape orientation
+      const filteredProjects = filterDataByDateRange(projects);
+      const filteredReports = filterDataByDateRange(dailyReports, 'reportDate');
       
-      // Header - بدون SA
-      doc.setFontSize(20);
-      doc.text(
-        language === 'ar' ? 'الهيئة العامة للطرق 🇸🇦' : 'Roads General Authority 🇸🇦',
-        doc.internal.pageSize.getWidth() / 2,
-        20,
-        { align: 'center' }
-      );
-      
-      doc.setFontSize(16);
-      doc.text(
-        language === 'ar' ? 'بيان نسب الإنجاز' : 'Progress Report',
-        doc.internal.pageSize.getWidth() / 2,
-        30,
-        { align: 'center' }
-      );
-      
-      doc.setFontSize(10);
-      doc.text(
-        `${language === 'ar' ? 'تاريخ الإنشاء:' : 'Generated:'} ${new Date().toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}`,
-        doc.internal.pageSize.getWidth() / 2,
-        37,
-        { align: 'center' }
-      );
-      
-      if (options.type === 'projects') {
-        const filteredProjects = filterDataByDateRange(projects);
-        
-        if (filteredProjects.length === 0) {
-          doc.setFontSize(14);
-          doc.text(language === 'ar' ? 'لا توجد مشاريع للعرض' : 'No projects to display', 20, 50);
-        } else {
-          const tableData = filteredProjects.map((p, index) => [
-            (index + 1).toString(),
-            p.workOrderNumber || '-',
-            p.roadName || '-',
-            p.projectType || '-',
-            (p.progressPlanned || 0) + '%',
-            (p.progressActual || 0) + '%',
-            (p.deviation || 0) + '%',
-            p.status || '-',
-          ]);
-          
-          (doc as any).autoTable({
-            startY: 45,
-            head: [[
-              language === 'ar' ? 'م' : '#',
-              language === 'ar' ? 'رقم أمر العمل' : 'Work Order',
-              language === 'ar' ? 'اسم الطريق' : 'Road Name',
-              language === 'ar' ? 'النوع' : 'Type',
-              language === 'ar' ? 'المخططة %' : 'Planned %',
-              language === 'ar' ? 'الفعلية %' : 'Actual %',
-              language === 'ar' ? 'الانحراف %' : 'Deviation %',
-              language === 'ar' ? 'الحالة' : 'Status',
-            ]],
-            body: tableData,
-            styles: {
-              font: 'helvetica',
-              fontSize: 9,
-              cellPadding: 3,
-            },
-            headStyles: {
-              fillColor: [0, 108, 53], // Saudi green
-              textColor: 255,
-              fontStyle: 'bold',
-            },
-            alternateRowStyles: {
-              fillColor: [245, 245, 245],
-            },
-            margin: { top: 45, left: 10, right: 10 },
-          });
-        }
-      } else if (options.type === 'daily-reports') {
-        const filteredReports = filterDataByDateRange(dailyReports, 'reportDate');
-        
-        if (filteredReports.length === 0) {
-          doc.setFontSize(14);
-          doc.text(language === 'ar' ? 'لا توجد تقارير للعرض' : 'No reports to display', 20, 50);
-        } else {
-          const tableData = filteredReports.map((r, index) => [
-            (index + 1).toString(),
-            r.reportDate || '-',
-            r.projectName || '-',
-            r.workDescription?.substring(0, 50) + '...' || '-',
-            (r.workersCount || 0).toString(),
-            (r.dailyProgress || 0) + '%',
-          ]);
-          
-          (doc as any).autoTable({
-            startY: 45,
-            head: [[
-              language === 'ar' ? 'م' : '#',
-              language === 'ar' ? 'التاريخ' : 'Date',
-              language === 'ar' ? 'المشروع' : 'Project',
-              language === 'ar' ? 'وصف الأعمال' : 'Work Description',
-              language === 'ar' ? 'العمال' : 'Workers',
-              language === 'ar' ? 'التقدم %' : 'Progress %',
-            ]],
-            body: tableData,
-            styles: {
-              font: 'helvetica',
-              fontSize: 9,
-              cellPadding: 3,
-            },
-            headStyles: {
-              fillColor: [0, 108, 53],
-              textColor: 255,
-              fontStyle: 'bold',
-            },
-            alternateRowStyles: {
-              fillColor: [245, 245, 245],
-            },
-            margin: { top: 45, left: 10, right: 10 },
-          });
-        }
+      // إنشاء HTML كامل مع دعم RTL والعربية
+      const html = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${language === 'ar' ? 'بيان نسب الإنجاز' : 'Progress Report'}</title>
+<style>
+@media print {
+  body { margin: 0; }
+  .no-print { display: none; }
+  @page { margin: 1.5cm; }
+}
+* { box-sizing: border-box; }
+body {
+  font-family: 'Arial', 'Tahoma', 'Segoe UI', 'Traditional Arabic', sans-serif;
+  direction: rtl;
+  text-align: right;
+  padding: 20px;
+  line-height: 1.6;
+  color: #1a1a1a;
+  background: #f5f5f5;
+  margin: 0;
+}
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  background: white;
+  padding: 30px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+.header {
+  text-align: center;
+  background: linear-gradient(135deg, #006C35 0%, #008844 100%);
+  color: white;
+  padding: 30px;
+  border-radius: 15px;
+  margin-bottom: 30px;
+}
+.header h1 {
+  margin: 0;
+  font-size: 32px;
+  font-weight: bold;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+}
+.header .subtitle {
+  margin-top: 10px;
+  font-size: 18px;
+  color: #FDB714;
+  font-weight: bold;
+}
+.header .date {
+  margin-top: 10px;
+  font-size: 14px;
+  opacity: 0.9;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 20px 0;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  border-radius: 10px;
+  overflow: hidden;
+  page-break-inside: avoid;
+}
+thead {
+  background: linear-gradient(135deg, #006C35 0%, #008844 100%);
+  color: white;
+}
+th {
+  padding: 15px 10px;
+  font-weight: bold;
+  font-size: 16px;
+  text-align: center;
+}
+td {
+  padding: 12px 10px;
+  border-bottom: 1px solid #dee2e6;
+  font-size: 15px;
+  text-align: center;
+}
+tr:nth-child(even) {
+  background-color: #f8f9fa;
+}
+tr:hover {
+  background-color: #e8f5e9;
+}
+.status-active { color: #10b981; font-weight: bold; }
+.status-completed { color: #006C35; font-weight: bold; }
+.status-delayed { color: #ef4444; font-weight: bold; }
+.status-stopped { color: #f59e0b; font-weight: bold; }
+.footer {
+  margin-top: 50px;
+  padding-top: 20px;
+  border-top: 3px solid #006C35;
+  text-align: center;
+  color: #666;
+  font-size: 14px;
+}
+.print-button {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  padding: 15px 30px;
+  background: linear-gradient(135deg, #006C35 0%, #008844 100%);
+  color: white;
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: bold;
+  box-shadow: 0 4px 15px rgba(0,108,53,0.4);
+  z-index: 1000;
+}
+.print-button:hover {
+  background: linear-gradient(135deg, #008844 0%, #00a651 100%);
+  transform: scale(1.05);
+}
+.no-data {
+  text-align: center;
+  padding: 40px;
+  font-size: 18px;
+  color: #999;
+}
+</style>
+</head>
+<body>
+<button class="print-button no-print" onclick="window.print()">🖨️ ${language === 'ar' ? 'طباعة / حفظ PDF' : 'Print / Save PDF'}</button>
+<script>
+// Auto-trigger print dialog
+window.onload = function() {
+  setTimeout(function() { window.print(); }, 500);
+};
+</script>
+<div class="container">
+<div class="header">
+<h1>🇸🇦 ${language === 'ar' ? 'الهيئة العامة للطرق' : 'Roads General Authority'}</h1>
+<div class="subtitle">${language === 'ar' ? 'بيان نسب الإنجاز' : 'Progress Report'}</div>
+<div class="date">${language === 'ar' ? 'تاريخ الإنشاء:' : 'Generated:'} ${new Date().toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}</div>
+</div>
+
+${options.type === 'projects' ? `
+<h2 style="color:#006C35;font-size:24px;margin:20px 0;">${language === 'ar' ? '📊 المشاريع' : '📊 Projects'}</h2>
+${filteredProjects.length === 0 ? `
+<div class="no-data">${language === 'ar' ? 'لا توجد مشاريع للعرض' : 'No projects to display'}</div>
+` : `
+<table>
+<thead>
+<tr>
+<th>${language === 'ar' ? 'م' : '#'}</th>
+<th>${language === 'ar' ? 'رقم أمر العمل' : 'Work Order'}</th>
+<th>${language === 'ar' ? 'اسم الطريق' : 'Road Name'}</th>
+<th>${language === 'ar' ? 'النوع' : 'Type'}</th>
+<th>${language === 'ar' ? 'المخططة %' : 'Planned %'}</th>
+<th>${language === 'ar' ? 'الفعلية %' : 'Actual %'}</th>
+<th>${language === 'ar' ? 'الانحراف %' : 'Deviation %'}</th>
+<th>${language === 'ar' ? 'الحالة' : 'Status'}</th>
+</tr>
+</thead>
+<tbody>
+${filteredProjects.map((p, index) => {
+  const statusClass = 
+    p.status === 'جاري العمل' || p.status === 'جاري' ? 'status-active' :
+    p.status === 'تم الاستلام النهائي' || p.status === 'منجز' ? 'status-completed' :
+    p.status === 'متأخر' || p.status === 'متعثر' ? 'status-delayed' :
+    p.status === 'متوقف' ? 'status-stopped' : '';
+  
+  return `
+<tr>
+<td>${index + 1}</td>
+<td>${p.workOrderNumber || '-'}</td>
+<td style="text-align:right;padding-right:15px;"><strong>${p.roadName || '-'}</strong></td>
+<td>${p.projectType || '-'}</td>
+<td>${p.progressPlanned || 0}%</td>
+<td><strong>${p.progressActual || 0}%</strong></td>
+<td>${p.deviation || 0}%</td>
+<td class="${statusClass}">${p.status || '-'}</td>
+</tr>
+`;
+}).join('')}
+</tbody>
+</table>
+`}
+` : ''}
+
+${options.type === 'daily-reports' ? `
+<h2 style="color:#006C35;font-size:24px;margin:20px 0;">${language === 'ar' ? '📋 التقارير اليومية' : '📋 Daily Reports'}</h2>
+${filteredReports.length === 0 ? `
+<div class="no-data">${language === 'ar' ? 'لا توجد تقارير للعرض' : 'No reports to display'}</div>
+` : `
+<table>
+<thead>
+<tr>
+<th>${language === 'ar' ? 'م' : '#'}</th>
+<th>${language === 'ar' ? 'التاريخ' : 'Date'}</th>
+<th>${language === 'ar' ? 'المشروع' : 'Project'}</th>
+<th>${language === 'ar' ? 'وصف الأعمال' : 'Work Description'}</th>
+<th>${language === 'ar' ? 'العمال' : 'Workers'}</th>
+<th>${language === 'ar' ? 'التقدم %' : 'Progress %'}</th>
+</tr>
+</thead>
+<tbody>
+${filteredReports.map((r, index) => `
+<tr>
+<td>${index + 1}</td>
+<td>${r.reportDate || '-'}</td>
+<td style="text-align:right;padding-right:15px;"><strong>${r.projectName || '-'}</strong></td>
+<td style="text-align:right;padding-right:15px;">${(r.workDescription || '-').substring(0, 80)}${(r.workDescription?.length || 0) > 80 ? '...' : ''}</td>
+<td><strong>${r.workersCount || 0}</strong></td>
+<td>${r.dailyProgress || 0}%</td>
+</tr>
+`).join('')}
+</tbody>
+</table>
+`}
+` : ''}
+
+<div class="footer">
+<p style="margin:5px 0;"><strong>🇸🇦 ${language === 'ar' ? 'نظام إدارة مشاريع الطرق - المملكة العربية السعودية' : 'Road Projects Management System - Kingdom of Saudi Arabia'}</strong></p>
+<p style="margin:5px 0;">${language === 'ar' ? 'تاريخ الطباعة:' : 'Print Date:'} <strong>${new Date().toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}</strong> - ${language === 'ar' ? 'الساعة:' : 'Time:'} <strong>${new Date().toLocaleTimeString(language === 'ar' ? 'ar-SA' : 'en-US')}</strong></p>
+</div>
+</div>
+</body>
+</html>`;
+
+      // فتح النافذة وكتابة HTML
+      const newWindow = window.open('', '_blank');
+      if (newWindow) {
+        newWindow.document.open();
+        newWindow.document.write('\ufeff' + html); // ✅ إضافة UTF-8 BOM
+        newWindow.document.close();
+        newWindow.focus();
+        toast.success(language === 'ar' ? 'تم فتح التقرير في نافذة جديدة - سيظهر مربع الطباعة تلقائياً ✅' : 'Report opened in new window - Print dialog will appear automatically ✅', {
+          duration: 6000,
+        });
+      } else {
+        toast.error(language === 'ar' ? 'يرجى السماح بفتح النوافذ المنبثقة في إعدادات المتصفح' : 'Please allow pop-ups in browser settings');
       }
       
-      // Footer
-      const pageCount = (doc as any).internal.getNumberOfPages();
-      for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.text(
-          `${language === 'ar' ? 'صفحة' : 'Page'} ${i} ${language === 'ar' ? 'من' : 'of'} ${pageCount}`,
-          doc.internal.pageSize.getWidth() / 2,
-          doc.internal.pageSize.getHeight() - 10,
-          { align: 'center' }
-        );
-      }
-      
-      const fileName = `${language === 'ar' ? 'بيان_نسب_الإنجاز' : 'progress_report'}_${new Date().toISOString().split('T')[0]}.pdf`;
-      doc.save(fileName);
-      
-      toast.success(language === 'ar' ? 'تم تصدير ملف PDF بنجاح' : 'PDF file exported successfully');
     } catch (error) {
       console.error('Error exporting to PDF:', error);
       toast.error(language === 'ar' ? 'فشل تصدير ملف PDF' : 'Failed to export PDF file');

@@ -13,6 +13,8 @@ interface LandingPageProps {
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, darkMode, toggleDarkMode }) => {
   const { language, toggleLanguage, t } = useLanguage();
+  
+  console.log('🎯 LandingPage: Rendering...', { darkMode, language });
 
   return (
     <div className="min-h-screen bg-landing-slideshow relative overflow-hidden" dir={language === 'ar' ? 'rtl' : 'ltr'}>

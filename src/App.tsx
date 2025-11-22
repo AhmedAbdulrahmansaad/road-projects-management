@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './components/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
+import { StatsProvider } from './contexts/StatsContext';
 import { LandingPage } from './components/LandingPage';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
@@ -78,9 +79,11 @@ export default function App() {
   return (
     <LanguageProvider>
       <AuthProvider>
-        <ClearAuthCache />
-        <AppContent />
-        <Toaster position="top-center" dir="rtl" />
+        <StatsProvider>
+          <ClearAuthCache />
+          <AppContent />
+          <Toaster position="top-center" dir="rtl" />
+        </StatsProvider>
       </AuthProvider>
     </LanguageProvider>
   );
