@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Shield, Zap, CheckCircle, Award, TrendingUp, Users, Clock, Headphones, Globe, Moon, Sun } from 'lucide-react';
 import { Activity, BarChart3, Bot } from 'lucide-react';
+import { roadBackground } from '../assets/backgrounds';
 
 interface LandingPageProps {
   onGetStarted: () => void;
@@ -17,8 +18,27 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, darkMode
   console.log('🎯 LandingPage: Rendering...', { darkMode, language });
 
   return (
-    <div className="min-h-screen bg-landing-slideshow relative overflow-hidden" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-      {/* Gradient Overlay مدمج في الخلفية */}
+    <div 
+      className="min-h-screen relative overflow-hidden" 
+      dir={language === 'ar' ? 'rtl' : 'ltr'}
+      style={{
+        backgroundImage: `url(${roadBackground})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        backgroundAttachment: 'fixed'
+      }}
+    >
+      {/* Gradient Overlay - خفيف عشان الصورة تظهر */}
+      <div 
+        className="absolute inset-0 z-0 transition-all duration-500"
+        style={{
+          background: darkMode 
+            ? 'linear-gradient(135deg, rgba(0, 0, 0, 0.82) 0%, rgba(0, 108, 53, 0.22) 20%, rgba(16, 185, 129, 0.18) 35%, rgba(0, 0, 0, 0.80) 50%, rgba(16, 185, 129, 0.18) 65%, rgba(0, 108, 53, 0.22) 80%, rgba(0, 0, 0, 0.82) 100%)'
+            : 'linear-gradient(135deg, rgba(0, 108, 53, 0.85) 0%, rgba(0, 0, 0, 0.75) 50%, rgba(253, 183, 20, 0.15) 75%, rgba(0, 108, 53, 0.85) 100%)',
+          backdropFilter: 'blur(1px)'
+        }}
+      />
       
       {/* Content */}
       <div className="relative z-10">

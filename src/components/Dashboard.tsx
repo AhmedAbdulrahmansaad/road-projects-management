@@ -25,6 +25,7 @@ import { LogOut, Plus, FileText, BarChart3, Calendar, Bot, Moon, Sun, Settings, 
 import { Badge } from './ui/badge';
 import { ArrowRight } from 'lucide-react';
 import { PerformanceContractsPage } from './PerformanceContractsPage';
+import { dashboardBackground } from '../assets/backgrounds';
 
 type View = 'home' | 'projects' | 'create' | 'reports' | 'daily' | 'ai' | 'users' | 'performance';
 
@@ -106,8 +107,27 @@ export const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-dashboard-slideshow relative overflow-hidden" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-      {/* Gradient Overlay مدمج في الخلفية */}
+    <div 
+      className="min-h-screen relative overflow-hidden" 
+      dir={language === 'ar' ? 'rtl' : 'ltr'}
+      style={{
+        backgroundImage: `url(${dashboardBackground})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        backgroundAttachment: 'fixed'
+      }}
+    >
+      {/* Gradient Overlay - خفيف عشان الصورة تظهر */}
+      <div 
+        className="absolute inset-0 z-0 transition-all duration-500"
+        style={{
+          background: darkMode 
+            ? 'linear-gradient(135deg, rgba(0, 0, 0, 0.88) 0%, rgba(0, 108, 53, 0.15) 25%, rgba(0, 0, 0, 0.85) 50%, rgba(0, 108, 53, 0.15) 75%, rgba(0, 0, 0, 0.88) 100%)'
+            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.88) 0%, rgba(0, 108, 53, 0.08) 25%, rgba(255, 255, 255, 0.92) 50%, rgba(253, 183, 20, 0.06) 75%, rgba(255, 255, 255, 0.88) 100%)',
+          backdropFilter: 'blur(0.5px)'
+        }}
+      />
       
       {/* Content */}
       <div className="relative z-10">

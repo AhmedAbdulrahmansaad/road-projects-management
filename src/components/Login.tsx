@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from 'sonner@2.0.3';
 import { LogIn, UserPlus, Moon, Sun, Globe, ArrowLeft } from 'lucide-react';
+import { roadBackground } from '../assets/backgrounds';
 
 interface LoginProps {
   onBack?: () => void;
@@ -73,8 +74,27 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="min-h-screen bg-login-slideshow relative overflow-hidden flex items-center justify-center p-4" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-      {/* Gradient Overlay مدمج في الخلفية */}
+    <div 
+      className="min-h-screen relative overflow-hidden flex items-center justify-center p-4" 
+      dir={language === 'ar' ? 'rtl' : 'ltr'}
+      style={{
+        backgroundImage: `url(${roadBackground})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        backgroundAttachment: 'fixed'
+      }}
+    >
+      {/* Gradient Overlay - خفيف عشان الصورة تظهر */}
+      <div 
+        className="absolute inset-0 z-0 transition-all duration-500"
+        style={{
+          background: darkMode 
+            ? 'linear-gradient(135deg, rgba(0, 0, 0, 0.75) 0%, rgba(0, 108, 53, 0.15) 25%, rgba(0, 0, 0, 0.70) 50%, rgba(0, 108, 53, 0.15) 75%, rgba(0, 0, 0, 0.75) 100%)'
+            : 'linear-gradient(135deg, rgba(0, 108, 53, 0.70) 0%, rgba(0, 0, 0, 0.60) 50%, rgba(0, 108, 53, 0.70) 100%)',
+          backdropFilter: 'blur(1px)'
+        }}
+      />
       
       {/* Content */}
       <div className="relative z-10 w-full max-w-md">
